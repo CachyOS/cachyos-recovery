@@ -1,0 +1,10 @@
+[Unit]
+Description=Mount overlayfs on snapshot boot
+DefaultDependencies=no
+After=initrd-fs.target
+Before=initrd.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/initcpio/hooks/overlayfs mount
+RemainAfterExit=yes

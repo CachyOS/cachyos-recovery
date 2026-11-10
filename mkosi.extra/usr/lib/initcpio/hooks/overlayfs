@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Copyright (C) 2026 CachyOS team
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+mount_overlayfs() {
+    local fstype upper_dir
+
+    fstype="$(findmnt -no FSTYPE /sysroot 2>/dev/null)"
+    device="$(findmnt -vno SOURCE /sysroot 2>/dev/null)"
+
+    if [[ -z "$device" ]]; then
+        logger -t "$0" -p err "Failed to find root device"
+        return 1
+    fi
+
+    # Don't mount overlayfs if target filesystem isn't Btrfs
+    if [[ "${fstype}" != "btrfs" ]]; then
+        return 0
+    fi
+
+    # Don't mount overlayfs if subvolume isn't snapshot
+    if [[ "$(btrfs subvolume show /sysroot \
+        | grep -am 1 "Parent UUID:" | sed 's/.*:\s*//')" == "-" ]]; then
+        logger -t "$0" -p info "Target subvolume is not snapshot"
+        return 0
+    fi
+
+    # Don't mount overlayfs if snapshot isn't read-only
+    if [[ "$(btrfs property get /sysroot ro)" != "ro=true" ]]; then
+        logger -t "$0" -p info "Target snapshot is not read-only"
+        return 0
+    fi
+
+    upper_dir="$(mktemp -d -p / upper.XXXXXX)"
+
+    if ! mount -t tmpfs cowspace "${upper_dir}"; then
+        logger -t "$0" -p err "Failed to mount tmpfs"
+        return 1
+    fi
+
+    if ! mkdir -p "${upper_dir}/work" "${upper_dir}/upper"; then
+        umount "${upper_dir}"
+        logger -t "$0" -p err "Failed to create upper and work dirs"
+        return 1
+    fi
+
+    if ! mount -t overlay overlay \
+        -o lowerdir=/sysroot,upperdir="${upper_dir}"/upper,workdir="${upper_dir}"/work \
+        /sysroot; then
+        umount "${upper_dir}" || true
+        rm -rf "${upper_dir}"
+        logger -t "$0" -p err "Failed to mount overlayfs"
+        return 1
+    fi
+
+    if ! mkdir -p "${upper_dir}/upper/usr/local/bin"; then
+        logger -t "$0" -p err "Failed to create override /usr/local/bin directory"
+        return 1
+    fi
+
+    if ! cp "/usr/local/bin/cachyos-recovery" "${upper_dir}/upper/usr/local/bin"; then
+        logger -t "$0" -p err "Failed to copy cachyos-recovery in sysroot"
+        return 1
+    fi
+
+    logger -t "$0" -p info "Overlayfs mounted"
+    return 0
+}
+
+# For busybox-based initramfs
+run_latehook() {
+    mount_overlayfs
+}
+
+# For systemd-based initramfs
+if [[ "$1" = "mount" ]]; then
+    mount_overlayfs
+fi

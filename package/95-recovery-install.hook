@@ -1,0 +1,10 @@
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = cachyos-recovery
+
+[Action]
+Description = Installing system recovery image...
+When = PostTransaction
+Exec = /usr/share/libalpm/scripts/cachyos-recovery-installer

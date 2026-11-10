@@ -1,0 +1,17 @@
+[Unit]
+Description=CachyOS recovery menu
+DefaultDependencies=no
+Wants=systemd-udevd.service systemd-udev-trigger.service
+After=basic.target systemd-udev-trigger.service
+OnFailure=emergency.target
+OnFailureJobMode=replace-irreversibly
+
+[Service]
+Type=exec
+ExecStart=/usr/local/lib/cachyos-recovery-bootstrap
+StandardInput=tty-force
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+Restart=no

@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+# Copyright (C) 2026 Vasiliy Stelmachenok <ventureo@cachyos.org>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+set -euo pipefail
+
+function parse_root() {
+    local root="$1"
+    local device
+
+    case "${root}" in
+        UUID=*|PARTUUID=*|LABEL=*|PARTLABEL=*)
+            device="$(findfs "$root")"
+            ;;
+        /dev/*)
+            device="${root}"
+            ;;
+        *);;
+    esac
+
+    echo "${device:-}"
+}
+
+function unlock_luks() {
+    local device="${1}"
+    local name="${2}"
+
+    if [[ -z "${device:-}" || ! -b "${device:-}" ]]; then
+        echo "Failed to find LUKS device" >&2
+        return 1
+    fi
+
+    if [[ -z "${name:-}" ]]; then
+        echo "Failed to parse LUKS device name" >&2
+        return 1
+    fi
+
+    if ! cryptsetup open "$device" "$name"; then
+        echo "Failed to unlock LUKS device" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+function mount_sysroot() {
+    local device flags fstype
+    local luks_device luks_name
+
+    # First try to unlock LUKS if exists
+    while read -r kparam; do
+        case "$kparam" in
+            cryptdevice=*:*|rd.luks.cryptdevice=*:*)
+                luks_device="${kparam#*=}"
+                luks_device="${luks_device%%:*}"
+                luks_device="$(parse_root "$luks_device")"
+                luks_name="${kparam#*=}"
+                luks_name="${luks_name##:*}"
+                luks_name="${luks_name%%:*}"
+                if ! unlock_luks "${luks_device}" "${luks_name}"; then
+                    echo "Failed to unlock LUKS device" >&2
+                    return 1
+                fi
+                ;;
+            *) ;;
+        esac
+    done < <(cat /proc/cmdline | tr " " "\n")
+
+    # Then try to parse root params
+    while read -r kparam; do
+        case "$kparam" in
+            root=*)
+                device="$(parse_root "${kparam#*=}")"
+                ;;
+            rootfstype=*)
+                fstype="${kparam##*=}"
+                ;;
+            rootflags=*)
+                flags="${kparam#*=},ro"
+                ;;
+            *) ;;
+        esac
+    done < <(cat /proc/cmdline | tr " " "\n")
+
+    if [[ -z "${device:-}" || ! -b "${device:-}" ]]; then
+        echo "Failed to detect root device for mount" >&2
+        return 1
+    fi
+
+    if ! mount -t "${fstype:-auto}" -o "${flags:-"ro"}" "$device" /sysroot; then
+        return 1
+    fi
+
+    return 0
+}
+
+function start_shell() {
+    exec /usr/bin/bash -i
+}
+
+function bootstrap() {
+    if ! mkdir -p /sysroot /tmp /dev/pts; then
+        echo "Failed to create temporary directories" >&2
+        echo "Failed to start CachyOS recovery menu, you are in emergency shell" >&2
+        return 1
+    fi
+
+    if ! mountpoint -q /dev/pts; then
+        mount -t devpts devpts /dev/pts -o mode=620,ptmxmode=666
+    fi
+
+    # TODO: Prompt user to select root partition manually
+    if ! mount_sysroot; then
+        echo "Failed to mount sysroot" >&2
+        echo "Failed to start CachyOS recovery menu, you are in emergency shell" >&2
+        return 1
+    fi
+
+    kmscon \
+        --no-libseat \
+        --no-hwaccel \
+        --no-reset-env \
+        --vt=1 \
+        --font-engine=freetype \
+        --font-size=24 \
+        --term=xterm-256color \
+        --login \
+        --oneshot -- /usr/local/bin/cachyos-recovery start || true
+    start_shell
+}
+
+bootstrap "$@"

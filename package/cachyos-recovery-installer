@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# Copyright (C) 2026 Vasiliy Stelmachenok <ventureo@cachyos.org>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# From systemd-boot-manager
+function generate_cmdline() {
+    local srcdev \
+        srcdev_uuid \
+        srcdev_partuuid \
+        srcdev_fsroot \
+        root_fstype \
+        cryptdevice_uuid \
+        zpool \
+        zpool_device \
+        top_level_uuid \
+        options
+
+    srcdev="$(findmnt -vno SOURCE /)"
+    srcdev_uuid="$(findmnt -no UUID /)"
+    srcdev_partuuid="$(findmnt -no PARTUUID /)"
+    srcdev_fsroot="$(findmnt -no FSROOT /)"
+    root_fstype="$(findmnt -no FSTYPE /)"
+
+    if [[ -n "$srcdev_uuid" ]]; then
+        options="root=UUID=${srcdev_uuid}"
+    elif [[ -n "$srcdev_partuuid" ]]; then
+        options="root=PARTUUID=${srcdev_partuuid}"
+    else
+        options="root=${srcdev}"
+    fi
+
+    case "${root_fstype}" in
+        zfs)
+            options="zfs=${srcdev}"
+            ;;
+        btrfs)
+            options+=" rootflags=subvol=${srcdev_fsroot}"
+            ;;
+    esac
+
+    top_level_uuid="${srcdev_uuid}"
+
+    if [[ "${root_fstype}" = "zfs" ]]; then
+        zpool="${srcdev%%/*}"
+        zpool_device="$(zpool status -LP "${zpool}" | grep "/dev/" | awk '{print $1}')"
+        top_level_uuid="$(lsblk -no UUID "${zpool_device}")"
+    fi
+
+    while read -r devname devtype; do
+        if [[ "$devtype" = "crypt" ]]; then
+            cryptdevice_uuid="$(blkid -o value -s UUID \
+                "$(cryptsetup status "${devname}" \
+                    | grep device \
+                    | awk '{print $2}'
+                )"
+            )"
+            options+=" cryptdevice=UUID=${cryptdevice_uuid}:${devname}"
+            break
+        fi
+    done < <(lsblk -nslo NAME,TYPE /dev/disk/by-uuid/"${top_level_uuid}" 2>/dev/null)
+
+    echo "${options}"
+}
+
+function install_recovery() {
+    local source target esp
+
+    esp="$(bootctl --print-esp-path 2>/dev/null || echo /boot)"
+
+    source="/usr/lib/cachyos-recovery/cachyos-recovery.efi"
+    target="${esp}/EFI/Linux/cachyos-recovery.efi"
+
+    if [[ ! -s "${source}" ]]; then
+        echo "cachyos-recovery image not found, exit..." >&2
+        return 1
+    fi
+
+    if [[ ! -d "${esp}/EFI/Linux" ]]; then
+        mkdir -p "${esp}/EFI/Linux"
+    fi
+
+    # In case if package was upgraded due to pkgrel increase
+    if ! cmp -s "$source" "$target"; then
+        if ! install -m644 "$source" "${target}.new"; then
+            echo "Failed to copy cachyos-recovery image in ESP partition" >&2
+            return 1
+        fi
+
+        if ! mv -f "${target}.new" "${target}"; then
+            echo "Failed to install cachyos-recovery image" >&2
+            return 1
+        fi
+    fi
+
+    if ! mkdir -p "${target}.extra.d"; then
+        echo "Failed to create addon directory for CachyOS recovery" >&2
+        return 1
+    fi
+
+    if ! ukify build \
+        --cmdline="$(generate_cmdline)" \
+        --output="${target}.extra.d/root.addon.efi"; then
+        echo "Failed to generate command-line addon for CachyOS recovery image" >&2
+        return 1
+    fi
+
+    # Add boot entry in Limine if it's used
+    if command -v limine-entry-tool 2>/dev/null && [[ -e "${esp}/EFI/limine/limine_x64.efi" ]]; then
+        if ! limine-entry-tool --add-efi "CachyOS Recovery" "${target}" --overwrite --quiet; then
+            echo "Failed to add boot entry in Limine, please do this manually" >&2
+        fi
+    fi
+
+    return 0
+}
+
+# TODO: Add support for BIOS
+if [[ -d /sys/firmware/efi/efivars ]]; then
+    install_recovery
+fi

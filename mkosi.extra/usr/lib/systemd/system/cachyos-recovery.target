@@ -1,0 +1,7 @@
+[Unit]
+Description=CachyOS recovery environment
+DefaultDependencies=no
+Wants=basic.target
+After=basic.target
+Requires=cachyos-recovery.service
+AllowIsolate=yes
