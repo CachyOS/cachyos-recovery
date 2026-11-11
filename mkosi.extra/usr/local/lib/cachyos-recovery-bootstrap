@@ -69,7 +69,7 @@ function mount_sysroot() {
                 luks_device="${luks_device%%:*}"
                 luks_device="$(parse_root "$luks_device")"
                 luks_name="${kparam#*=}"
-                luks_name="${luks_name##:*}"
+                luks_name="${luks_name#*:}"
                 luks_name="${luks_name%%:*}"
                 if ! unlock_luks "${luks_device}" "${luks_name}"; then
                     echo "Failed to unlock LUKS device" >&2
