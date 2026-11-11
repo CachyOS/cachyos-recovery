@@ -535,6 +535,13 @@ function regenerate_boot_files() {
         return 0
     fi
 
+    # Fixes annoying fontconfig cache errors if mkinitcpio config has plymouth
+    # hook enabled
+    if ! mount -t tmpfs cowspace "${chroot}/var/cache"; then
+        error "Failed to mount tmpfs for cache in chroot"
+        return 1
+    fi
+
     if command -v limine-mkinitcpio &>/dev/null; then
         initramfs_generator="/usr/share/libalpm/scripts/limine-mkinitcpio-install"
     else
@@ -548,6 +555,12 @@ function regenerate_boot_files() {
             return 1
         }
     done < <(get_installed_kernels)
+
+    if ! umount "${chroot}/var/cache"; then
+        error "Failed to unmount cache directory for mkinitcpio"
+        umount "${chroot}/boot"
+        return 1
+    fi
 
     if ! regenerate_bootloader_config "${esp}" "${chroot}"; then
         error "Failed to re-generate bootloader configuration, rollback is not possible"
