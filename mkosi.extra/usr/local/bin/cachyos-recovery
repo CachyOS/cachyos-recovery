@@ -145,11 +145,14 @@ function mount_overlay() {
 # Make sure we're generating initramfs using snapshot configuration
 function mount_snapshot() {
     local snapshot="$1"
-    local mountpoint="${2:-"/snapshot"}"
-    local device error
+    local device="${2}"
+    local mountpoint="${3:-"/snapshot"}"
+    local error
 
-    device="$(findmnt -vno SOURCE /sysroot)"
-    mkdir -p "${mountpoint}"
+    if ! error="$(mkdir -p "${mountpoint}")"; then
+        echo "Failed to create mountpoint for snapshot ${snapshot}: ${error}"
+        return 1
+    fi
 
     if ! error="$(mount -o "ro,subvolid=${snapshot}" "${device}" "$mountpoint" 2>&1)"; then
         echo "Failed to mount snapshot ${snapshot}: ${error}"
@@ -243,8 +246,13 @@ function boot_btrfs_snapshot() {
     fi
 
     mountpoint="/snapshot"
+    device="$(findmnt -vno SOURCE /sysroot)"
 
-    if ! error="$(mount_snapshot "${snapshot}" "${mountpoint}")"; then
+    if [[ -z "$device" || ! -b "${device}" ]]; then
+        die "Failed to get real device of root file system"
+    fi
+
+    if ! error="$(mount_snapshot "${snapshot}" "${device}" "${mountpoint}")"; then
         umount -R "${mountpoint}" || true
         show_error "Failed to mount snapshot directory" "${error}"
         return 1
@@ -426,19 +434,20 @@ get_installed_kernels() {
 
 function regenerate_bootloader_config() {
     local esp="${1}"
+    local chroot="${2}"
 
     if [[ -e "${esp}/EFI/limine/limine_x64.efi" ]] && command -v limine-update &>/dev/null; then
-        limine-update || {
+        chroot "${chroot}" limine-update || {
             die "Failed to generate Limine config"
         }
     elif [[ -e "${esp}/EFI/systemd/systemd-bootx64.efi" ]] && command -v sdboot-manage &>/dev/null; then
-        sdboot-manage gen || {
+        chroot "${chroot}" sdboot-manage gen || {
             die "Failed to generate systemd-boot config"
         }
     elif [[ -e "${esp}/EFI/refind/refind_x64.efi" ]]; then
         info "rEFInd does not require configuration update"
     elif [[ -n "$(compgen -G "${esp}/EFI/*/grubx64.efi")" ]]; then
-        grub-mkconfig -o /boot/grub/grub.cfg || {
+        chroot "${chroot}" grub-mkconfig -o /boot/grub/grub.cfg || {
             die "Failed to generate systemd-boot config"
         }
     else
@@ -486,7 +495,8 @@ function move_nested_subvolumes() {
 
 function regenerate_boot_files() {
     local tmp="${1}"
-    local esp="${2:-/boot}"
+    local chroot="${2}"
+    local esp="${3:-/boot}"
     local kernel pkgver initramfs_generator
 
     step "Regenerating new /boot files for snapshot..."
@@ -508,7 +518,7 @@ function regenerate_boot_files() {
 
     # It's not possible to use overlayfs for FAT32 partition, so we have to
     # use cascade bind mounting
-    if ! mount --bind "$tmp" /boot; then
+    if ! mount --bind "$tmp" "${chroot}/boot"; then
         error "Failed to bind mount ${tmp} as /boot"
         return 1
     fi
@@ -516,9 +526,9 @@ function regenerate_boot_files() {
     # Do not regenerate initramfs files if ESP partition is not supposed to be
     # mount in /boot. This is only possible for GRUB.
     if [[ "$esp" != "/boot" ]]; then
-        if ! regenerate_bootloader_config "${esp}"; then
+        if ! regenerate_bootloader_config "${esp}" "${chroot}"; then
             error "Failed to re-generate GRUB configuration, rollback is not possible"
-            umount /boot
+            umount "${chroot}/boot"
             return 1
         fi
 
@@ -532,65 +542,42 @@ function regenerate_boot_files() {
     fi
 
     while read -r pkgver; do
-        echo "/usr/lib/modules/${pkgver}/vmlinuz" | $initramfs_generator || {
+        echo "/usr/lib/modules/${pkgver}/vmlinuz" | chroot "${chroot}" $initramfs_generator || {
             error "Failed to re-generate initramfs for snapshot, rollback is not possible"
-            umount /boot
+            umount "${chroot}/boot"
             return 1
         }
     done < <(get_installed_kernels)
 
-    if ! regenerate_bootloader_config "${esp}"; then
+    if ! regenerate_bootloader_config "${esp}" "${chroot}"; then
         error "Failed to re-generate bootloader configuration, rollback is not possible"
-        umount /boot
+        umount "${chroot}/boot"
         return 1
     fi
 
-    umount /boot
+    umount "${chroot}/boot"
     return 0
 }
 
 function restore_btrfs_snapshot() {
     local tmp="${1}"
-    local snapshot="${2}"
-    local device="${3}"
-    local rollback="${4}"
+    local device="${2}"
+    local rollback="${3}"
 
     if ! mkdir -p -- "${tmp}/root"; then
         error "Failed to create ${tmp}/root"
         return 1
     fi
 
-    if ! mkdir -p -- "${tmp}/snapshot"; then
-        rmdir "${tmp}/root" || true
-        error "Failed to create ${tmp}/snapshot"
-        return 1
-    fi
-
     if ! mount -o subvolid=5 "${device}" "${tmp}/root"; then
         rmdir "${tmp}/root" || true
-        rmdir "${tmp}/snapshot" || true
         error "Failed to mount old root partiton"
         return 1
     fi
 
-    if ! mount -o ro,subvolid="${snapshot}" "${device}" "${tmp}/snapshot"; then
-        error "Failed to mount snapshot"
-        rmdir "${tmp}/snapshot" || true
-        umount "${tmp}/root" && rmdir "${tmp}/root"
-        return 1
-    fi
-
     if ! btrfs --quiet subvolume snapshot "${tmp}/snapshot" "${rollback}"; then
-        umount "${tmp}/snapshot" && rmdir "${tmp}/snapshot" || true
         umount "${tmp}/root" && rmdir "${tmp}/root" || true
         error "Failed create new root from snapshot"
-        return 1
-    fi
-
-    if umount "${tmp}/snapshot"; then
-        rmdir "${tmp}/snapshot" || true
-    else
-        error "Failed to umount ${tmp}/snapshot"
         return 1
     fi
 
@@ -664,6 +651,8 @@ function rollback_btrfs_snapshot() {
             umount "${tmp}/root" && rmdir "${tmp}/root"
         fi
 
+        mountpoint -q "${tmp}/snapshot" 2>/dev/null && umount -R "${tmp}/snapshot"
+        mountpoint -q "${tmp}/snapshot" 2>/dev/null || rmdir "${tmp}/snapshot"
         rmdir "${tmp}" || true
         rm -rf "${boot}" || true
     }
@@ -674,7 +663,11 @@ function rollback_btrfs_snapshot() {
     # restoring snapshot
     esp="$(bootctl -p 2>/dev/null || echo "/boot")"
 
-    if ! regenerate_boot_files "${boot}" "${esp}"; then
+    if ! mount_snapshot "${snapshot}" "${device}" "${tmp}/snapshot"; then
+        die "Failed to mount snapshot"
+    fi
+
+    if ! regenerate_boot_files "${boot}" "${tmp}/snapshot" "${esp}"; then
         die "Failed to regenerate boot files, snapshot isn't recoverable"
     fi
 
@@ -684,9 +677,12 @@ function rollback_btrfs_snapshot() {
     rollback="$(mktemp -t -u -p "${tmp}/root" '@rollback.XXXXXXX')"
 
     step "Creating new root subvolume from the snapshot..."
-    if ! restore_btrfs_snapshot "${tmp}" "${snapshot}" "${device}" "${rollback}"; then
+
+    if ! restore_btrfs_snapshot "${tmp}" "${device}" "${rollback}"; then
         die "Failed to restore snapshot, old root preserved"
     fi
+
+    umount -R "${tmp}/snapshot" || die "Failed to unmount snapshot"
 
     # Stage 3: Make new root
     oldroot="$(mktemp -t -u -p "${tmp}/root" '@oldroot.XXXXXXX')"
