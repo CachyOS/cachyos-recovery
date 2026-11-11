@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env -S unshare -m bash
 # Copyright (C) 2026 Vasiliy Stelmachenok <ventureo@cachyos.org>
 #
 # This program is free software; you can redistribute it and/or modify
@@ -673,8 +673,7 @@ function rollback_btrfs_snapshot() {
     # restoring snapshot
     esp="$(bootctl -p 2>/dev/null || echo "/boot")"
 
-    # Use unshare to hide bind mount in /boot from other processes
-    if ! unshare --mount -- /usr/local/bin/cachyos-recovery regenerate "${boot}" "${esp}"; then
+    if ! regenerate_boot_files "${boot}" "${esp}"; then
         die "Failed to regenerate boot files, snapshot isn't recoverable"
     fi
 
@@ -827,9 +826,6 @@ function main() {
     case "${1:-}" in
         start)
             start
-            ;;
-        regenerate)
-            regenerate_boot_files "${@:2:$#}"
             ;;
         rollback)
             rollback_btrfs_snapshot
