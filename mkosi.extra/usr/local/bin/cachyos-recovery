@@ -823,6 +823,11 @@ function main() {
         die "Please, run script as root"
     fi
 
+    if [[ "$1" == "--debug" ]]; then
+        set -x
+        shift
+    fi
+
     case "${1:-}" in
         start)
             start
