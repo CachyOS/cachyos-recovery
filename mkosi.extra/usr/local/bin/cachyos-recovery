@@ -483,7 +483,7 @@ function move_nested_subvolumes() {
         fi
 
         if [[ ! -d "${new}/${subvol}" ]]; then
-            if ! mv -v -- "${old}/${subvol}" "${new}/${subvol}"; then
+            if ! mv -T -v -- "${old}/${subvol}" "${new}/${subvol}"; then
                 echo "Failed to move ${subvol}"
                 return 1
             fi
@@ -654,7 +654,7 @@ function rollback_btrfs_snapshot() {
             fi
 
             if [[ ! -d "${tmp}/root/@" ]]; then
-                mv -- "${oldroot}" "${tmp}/root/@" || error "Failed to restore old root"
+                mv -T -- "${oldroot}" "${tmp}/root/@" || error "Failed to restore old root"
             fi
 
             if [[ -n "${rollback:-}" && -d "${rollback}" ]]; then
@@ -705,12 +705,12 @@ function rollback_btrfs_snapshot() {
     oldroot="$(mktemp -t -u -p "${tmp}/root" '@oldroot.XXXXXXX')"
     step "Moving new root in place of the old one..."
 
-    if ! mv -- "${tmp}/root/@" "${oldroot}"; then
+    if ! mv -T -- "${tmp}/root/@" "${oldroot}"; then
         die "Failed to move old root"
     fi
 
-    if ! mv -- "${rollback}" "${tmp}/root/@"; then
-        mv -- "${oldroot}" "${tmp}/root/@" || die "Failed to restore old root"
+    if ! mv -T -- "${rollback}" "${tmp}/root/@"; then
+        mv -T -- "${oldroot}" "${tmp}/root/@" || die "Failed to restore old root"
         die "Failed to move new root"
     fi
 
