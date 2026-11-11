@@ -661,6 +661,10 @@ function rollback_btrfs_snapshot() {
                 btrfs --quiet subvolume delete --commit-after "${rollback}" || true
             fi
 
+            if [[ -n "${oldboot:-}" && -d "${oldboot}" ]]; then
+                rm -rf "${oldboot}" || true
+            fi
+
             umount "${tmp}/root" && rmdir "${tmp}/root"
         fi
 
@@ -719,9 +723,16 @@ function rollback_btrfs_snapshot() {
     # Stage 5: Move staged files to real /boot
     step "Copying new /boot files to ESP partition..."
     target=$([[ "${esp}" == "/boot" ]] && echo "/" || echo "${tmp}/root/@")
+    oldboot="$(mktemp -t -u -p "${tmp}/root/@" 'boot.XXXXXXX')"
+
+    if ! cp -a -T -- "${target}/boot" "${oldboot}"; then
+        mv -T -- "${tmp}/root/@" "${rollback}" || die "Failed to move new root"
+        die "Failed to save old boot content, returning old root..."
+    fi
 
     if ! cp -a -T -- "${boot}" "${target}/boot"; then
-        mv -- "${tmp}/root/@" "${rollback}" || die "Failed to move new root"
+        mv -T -- "${oldboot}" "${target}/boot" || die "Failed to return old boot, your system can be broken"
+        mv -T -- "${tmp}/root/@" "${rollback}" || die "Failed to move new root, your system can be broken"
         die "Failed to copy staged boot files in ESP partition, returning old root..."
     fi
 
