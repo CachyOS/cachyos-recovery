@@ -486,7 +486,7 @@ function move_nested_subvolumes() {
 function regenerate_boot_files() {
     local tmp="${1}"
     local esp="${2:-/boot}"
-    local kernel pkgver
+    local kernel pkgver initramfs_generator
 
     step "Regenerating new /boot files for snapshot..."
 
@@ -495,25 +495,20 @@ function regenerate_boot_files() {
         return 1
     fi
 
-    if [[ -d "${tmp}/boot" ]]; then
-        error "Temporary directory must be non-exist"
-        return 1
-    fi
-
     if ! mountpoint -q "$esp"; then
         error "ESP is not mounted"
         return 1
     fi
 
-    if ! cp -a /boot/. "${tmp}/boot"; then
-        error "Failed to copy /boot to ${tmp}/boot"
+    if ! cp -a -T -- /boot "$tmp"; then
+        error "Failed to copy /boot to $tmp"
         return 1
     fi
 
     # It's not possible to use overlayfs for FAT32 partition, so we have to
     # use cascade bind mounting
-    if ! mount --bind "${tmp}/boot" /boot; then
-        error "Failed to bind mount ${tmp}/boot as /boot"
+    if ! mount --bind "$tmp" /boot; then
+        error "Failed to bind mount ${tmp} as /boot"
         return 1
     fi
 
@@ -530,22 +525,18 @@ function regenerate_boot_files() {
     fi
 
     if command -v limine-mkinitcpio &>/dev/null; then
-        while read -r pkgver; do
-            echo "/usr/lib/modules/${pkgver}/vmlinuz" | /usr/share/libalpm/scripts/limine-mkinitcpio-install || {
-                error "Failed to re-generate initramfs for snapshot, rollback is not possible"
-                umount /boot
-                return 1
-            }
-        done < <(get_installed_kernels)
+        initramfs_generator="/usr/share/libalpm/scripts/limine-mkinitcpio-install"
     else
-        while read -r pkgver; do
-            echo "/usr/lib/modules/${pkgver}/vmlinuz" | /usr/share/libalpm/scripts/mkinitcpio install ||  {
-                error "Failed to re-generate initramfs for snapshot, rollback is not possible"
-                umount /boot
-                return 1
-            }
-        done < <(get_installed_kernels)
+        initramfs_generator="/usr/share/libalpm/scripts/mkinitcpio install"
     fi
+
+    while read -r pkgver; do
+        echo "/usr/lib/modules/${pkgver}/vmlinuz" | $initramfs_generator || {
+            error "Failed to re-generate initramfs for snapshot, rollback is not possible"
+            umount /boot
+            return 1
+        }
+    done < <(get_installed_kernels)
 
     if ! regenerate_bootloader_config "${esp}"; then
         error "Failed to re-generate bootloader configuration, rollback is not possible"
@@ -569,34 +560,34 @@ function restore_btrfs_snapshot() {
     fi
 
     if ! mkdir -p -- "${tmp}/snapshot"; then
-        rmdir "${tmp}/root"
+        rmdir "${tmp}/root" || true
         error "Failed to create ${tmp}/snapshot"
         return 1
     fi
 
     if ! mount -o subvolid=5 "${device}" "${tmp}/root"; then
-        rmdir "${tmp}/root"
-        rmdir "${tmp}/snapshot"
+        rmdir "${tmp}/root" || true
+        rmdir "${tmp}/snapshot" || true
         error "Failed to mount old root partiton"
         return 1
     fi
 
     if ! mount -o ro,subvolid="${snapshot}" "${device}" "${tmp}/snapshot"; then
         error "Failed to mount snapshot"
-        rmdir "${tmp}/snapshot"
+        rmdir "${tmp}/snapshot" || true
         umount "${tmp}/root" && rmdir "${tmp}/root"
         return 1
     fi
 
     if ! btrfs --quiet subvolume snapshot "${tmp}/snapshot" "${rollback}"; then
-        umount "${tmp}/snapshot" && rmdir "${tmp}/snapshot"
-        umount "${tmp}/root" && rmdir "${tmp}/root"
+        umount "${tmp}/snapshot" && rmdir "${tmp}/snapshot" || true
+        umount "${tmp}/root" && rmdir "${tmp}/root" || true
         error "Failed create new root from snapshot"
         return 1
     fi
 
     if umount "${tmp}/snapshot"; then
-        rmdir "${tmp}/snapshot"
+        rmdir "${tmp}/snapshot" || true
     else
         error "Failed to umount ${tmp}/snapshot"
         return 1
@@ -613,7 +604,8 @@ function rollback_btrfs_snapshot() {
         device \
         esp \
         oldroot \
-        rollback
+        rollback \
+        boot
 
     # Stage 0: Preparing
     snapshot="$(cat /proc/cmdline \
@@ -644,16 +636,45 @@ function rollback_btrfs_snapshot() {
     fi
 
     if ! tmp="$(mktemp -d -t mount.XXXXXX)"; then
-        die "Failed to create temporary directory"
+        die "Failed to create temporary mount directory"
     fi
+
+    if ! boot="$(mktemp -d -t boot.XXXXXX)"; then
+        rmdir "${tmp}"
+        die "Failed to create temporary boot directory"
+    fi
+
+    function _cleanup_rollback() {
+        [[ -z "${tmp:-}" ]] && return 0
+        if mountpoint -q "${tmp}/root" 2>/dev/null; then
+            # Re-incorporate nested volumes on fail
+            if [[ -n "${oldroot:-}" && -d "${oldroot}" && ! -d "${rollback}" ]]; then
+                move_nested_subvolumes "${tmp}/root/@" "${oldroot}" || true
+            fi
+
+            if [[ ! -d "${tmp}/root/@" ]]; then
+                mv -- "${oldroot}" "${tmp}/root/@" || error "Failed to restore old root"
+            fi
+
+            if [[ -n "${rollback:-}" && -d "${rollback}" ]]; then
+                btrfs --quiet subvolume delete --commit-after "${rollback}" || true
+            fi
+
+            umount "${tmp}/root" && rmdir "${tmp}/root"
+        fi
+
+        rmdir "${tmp}" || true
+        rm -rf "${boot}" || true
+    }
+
+    trap '_cleanup_rollback' EXIT RETURN
 
     # Stage 1: Try to check if we can regenerate all boot files before
     # restoring snapshot
     esp="$(bootctl -p 2>/dev/null || echo "/boot")"
 
     # Use unshare to hide bind mount in /boot from other processes
-    if ! unshare --mount -- /usr/local/bin/cachyos-recovery regenerate "${tmp}" "${esp}"; then
-        rm -rf "${tmp}"
+    if ! unshare --mount -- /usr/local/bin/cachyos-recovery regenerate "${boot}" "${esp}"; then
         die "Failed to regenerate boot files, snapshot isn't recoverable"
     fi
 
@@ -664,67 +685,34 @@ function rollback_btrfs_snapshot() {
 
     step "Creating new root subvolume from the snapshot..."
     if ! restore_btrfs_snapshot "${tmp}" "${snapshot}" "${device}" "${rollback}"; then
-        if ! mountpoint -q "${tmp}/snapshot" 2>/dev/null; then
-            if mountpoint -q "${tmp}/root" 2>/dev/null; then
-                umount "${tmp}/root" && rm -rf "${tmp}"
-            else
-                rm -rf "${tmp}"
-            fi
-        fi
         die "Failed to restore snapshot, old root preserved"
     fi
 
-    # Stage 3: Move all nested subvolumes
-    step "Moving nested subvolumes from old root to new one..."
-    if ! move_nested_subvolumes "${tmp}/root/@" "${rollback}"; then
-        # Re-incorporate nested volumes on fail
-        move_nested_subvolumes "${rollback}" "${tmp}/root/@"
-
-        btrfs --quiet subvolume delete --commit-after "${rollback}"
-        umount "${tmp}/root" && rm -rf "${tmp}"
-
-        die "Failed to move nested subvolumes, old root preserved"
-    fi
-
-    # Stage 4: Make new root
+    # Stage 3: Make new root
     oldroot="$(mktemp -t -u -p "${tmp}/root" '@oldroot.XXXXXXX')"
     step "Moving new root in place of the old one..."
 
     if ! mv -- "${tmp}/root/@" "${oldroot}"; then
-        # Re-incorporate nested volumes on fail
-        move_nested_subvolumes "${rollback}" "${tmp}/root/@"
-
-        btrfs --quiet subvolume delete --commit-after "${rollback}"
-        umount "${tmp}/root" && rm -rf "${tmp}"
-
         die "Failed to move old root"
     fi
 
     if ! mv -- "${rollback}" "${tmp}/root/@"; then
         mv -- "${oldroot}" "${tmp}/root/@" || die "Failed to restore old root"
-        # Re-incorporate nested volumes on fail
-        move_nested_subvolumes "${rollback}" "${tmp}/root/@"
-
-        btrfs --quiet subvolume delete --commit-after "${rollback}"
-        umount "${tmp}/root" && rm -rf "${tmp}"
-
         die "Failed to move new root"
+    fi
+
+    # Stage 4: Move all nested subvolumes
+    step "Moving nested subvolumes from old root to new one..."
+    if ! move_nested_subvolumes "${oldroot}" "${tmp}/root/@"; then
+        die "Failed to move nested subvolumes, old root preserved"
     fi
 
     # Stage 5: Move staged files to real /boot
     step "Copying new /boot files to ESP partition..."
     target=$([[ "${esp}" == "/boot" ]] && echo "/" || echo "${tmp}/root/@")
 
-    if ! cp -a -T -- "${tmp}/boot" "${target}/boot"; then
-        # Re-incorporate nested volumes on fail
-        move_nested_subvolumes "${tmp}/root/@" "${oldroot}"
-
+    if ! cp -a -T -- "${boot}" "${target}/boot"; then
         mv -- "${tmp}/root/@" "${rollback}" || die "Failed to move new root"
-        mv -- "${oldroot}" "${tmp}/root/@" || die "Failed to restore old root"
-
-        btrfs --quiet subvolume delete --commit-after "${rollback}"
-        umount "${tmp}/root" && rm -rf "${tmp}"
-
         die "Failed to copy staged boot files in ESP partition, returning old root..."
     fi
 
@@ -732,7 +720,6 @@ function rollback_btrfs_snapshot() {
         error "Failed to remove ${oldroot}"
     fi
 
-    umount "${tmp}/root" && rm -rf "${tmp}"
     info "Snapshot restored, you can reboot your system"
 
     return 0
