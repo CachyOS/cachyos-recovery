@@ -559,7 +559,7 @@ function regenerate_boot_files() {
     return 0
 }
 
-function restore_btrfs_snapshot() {
+function create_new_btrfs_root() {
     local tmp="${1}"
     local device="${2}"
     local rollback="${3}"
@@ -673,12 +673,12 @@ function rollback_btrfs_snapshot() {
 
     info "Generated new /boot files, starting snapshot restore..."
 
-    # Stage 2: Actual snapshot restoring
+    # Stage 2: Create new root from snapshot
     rollback="$(mktemp -t -u -p "${tmp}/root" '@rollback.XXXXXXX')"
 
     step "Creating new root subvolume from the snapshot..."
 
-    if ! restore_btrfs_snapshot "${tmp}" "${device}" "${rollback}"; then
+    if ! create_new_btrfs_root "${tmp}" "${device}" "${rollback}"; then
         die "Failed to restore snapshot, old root preserved"
     fi
 
