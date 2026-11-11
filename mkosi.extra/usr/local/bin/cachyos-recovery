@@ -55,6 +55,13 @@ declare -ar FZF_COMMON_OPTIONS=(
     --reverse
 )
 
+declare -a OVERLAY_FILES=(
+    "/usr/local/bin/cachyos-recovery"
+    "/usr/lib/initcpio/hooks/overlayfs"
+    "/usr/lib/initcpio/install/overlayfs"
+    "/usr/lib/systemd/system/overlayfs-hook.service"
+)
+
 ## Functions
 
 function msg() {
@@ -164,12 +171,6 @@ function generate_temporary_initramfs() {
     local snapshot="$1"
     local kver="$2"
     local workdir="$3"
-    local -a hooks=(
-        "/usr/local/bin/cachyos-recovery"
-        "/usr/lib/initcpio/hooks/overlayfs"
-        "/usr/lib/initcpio/install/overlayfs"
-        "/usr/lib/systemd/system/overlayfs-hook.service"
-    )
     local error root
 
     if ! error="$(mkdir -p "${workdir}/overlay" 2>&1)"; then
@@ -184,7 +185,7 @@ function generate_temporary_initramfs() {
         return 1
     fi
 
-    for hook in "${hooks[@]}"; do
+    for hook in "${OVERLAY_FILES[@]}"; do
         root="${workdir}/overlay/upper"
         if ! error="$(mkdir -p -- "${root}/$(dirname "${hook#/usr/}")" 2>&1)"; then
             umount "${snapshot}/usr" && umount "${workdir}/overlay" && rmdir "${workdir}/overlay"
