@@ -387,20 +387,18 @@ fi
 
 echo -e "\nSnapper metadata:\n"
 
-description="$(grep -m1 -a "^\s*<description>" "$snapper_info" \
-    | sed "s|.*<description>\(.*\)</description>$|\1|")"
-type="$(grep -m1 -a "^\s*<type>" "$snapper_info" \
-    | sed "s|.*<type>\(.*\)</type>$|\1|")"
+desc="$(grep -m1 -Po "^\s*<description>\K(.*)(?=</description>\$)" "$snapper_info")"
+type="$(grep -m1 -Po "^\s*<type>\K(.*)(?=</type>\$)" "$snapper_info")"
 
 # Decode XML format to represent Unicode characters
-while [[ $description =~ (&#x([[:xdigit:]]+)\;) ]]; do
+while [[ $desc =~ (&#x([[:xdigit:]]+)\;) ]]; do
     match="${BASH_REMATCH[1]}"
     hex="${BASH_REMATCH[2]}"
     printf -v char "\\U$hex"
-    description="${description//"$match"/$char}"
+    desc="${desc//"$match"/$char}"
 done
 
-echo "Description: ${description}"
+echo "Description: ${desc}"
 echo "Type: ${type}"
 EOF
 )"
