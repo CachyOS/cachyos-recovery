@@ -1,8 +1,8 @@
 [Unit]
 Description=CachyOS recovery menu
 DefaultDependencies=no
-Wants=systemd-udevd.service systemd-udev-trigger.service
-After=basic.target systemd-udev-trigger.service
+Wants=systemd-udevd.service systemd-udev-settle.service
+After=basic.target systemd-udev-trigger.service systemd-udev-settle.service
 OnFailure=emergency.target
 OnFailureJobMode=replace-irreversibly
 
