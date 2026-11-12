@@ -794,6 +794,9 @@ function rollback_btrfs_snapshot() {
         die "Failed to copy staged boot files in ESP partition, returning old root..."
     fi
 
+    # Remove pacman lock from snapshot after restoring
+    rm -f "${tmp}/root/@/var/lib/pacman/db.lck"
+
     completed=1
 
     if ! btrfs --quiet subvolume delete --commit-after "${oldroot}"; then
