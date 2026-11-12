@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Copyright (C) 2026 Vasiliy Stelmachenok <ventureo@cachyos.org>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+set -euo pipefail
+
+declare -A terminals=(
+    ["1. alacritty"]="alacritty -e"
+    ["2. foot"]="foot"
+    ["3. ghostty"]="ghostty -e"
+    ["4. kgx"]="kgx --wait -e"
+    ["5. gnome-terminal"]="gnome-terminal --wait --"
+    ["6. kitty"]="kitty"
+    ["7. wezterm"]="wezterm start --always-new-process"
+    ["8. konsole"]="konsole -e"
+    ["9. lxterminal"]="lxterminal -e"
+    ["10. rio"]="rio -e"
+    ["11. st"]="st"
+    ["12. terminator"]="terminator -x"
+    ["13. xfce4-terminal"]="xfce4-terminal --disable-server --command"
+    ["14. xterm"]="xterm -e"
+    ["15. ptyxis"]="ptyxis -e"
+)
+
+function spawn_terminal() {
+    local cmd terminal
+
+    # Try to find any terminal
+    while IFS= read -rd '' terminal; do
+        cmd="${terminals[$terminal]}"
+        if command -v "${cmd%% *}" &>/dev/null; then
+            break
+        else
+            unset cmd
+        fi
+    done < <(printf '%s\0' "${!terminals[@]}" | sort -t '.' -n -k 1 -z)
+
+    if [[ -n "${cmd:-}" ]]; then
+        $cmd bash -lc '
+        printf "\e[1m\e[32m==>\e[0m\e[1m Please enter your password to continue\e[0m\n"
+        run0 --background= /usr/local/bin/cachyos-recovery rollback
+        status=$?
+        printf "\e[1m\e[32m==>\e[0m\e[1m Rollback command exited with status %s. Press Enter to close...\e[0m\n" "$status"
+        read -r _; exit "$status"
+        ' & disown
+    else
+        notify-send -t 1500 \
+            --app-name='CachyOS Recovery' \
+            "No terminal found" \
+            "Could not find a terminal emulator. Please launch cachyos-recovery manually." || true
+        return 0
+    fi
+}
+
+function notify_user() {
+    local action
+
+    if ! command -v notify-send &>/dev/null; then
+        logger -t "$0" -p warn "notify-send not found, nothing to do"
+        exit 0
+    fi
+
+    action="$(
+        notify-send \
+            --app-name='CachyOS Recovery' \
+            --icon=backup \
+            --urgency=critical \
+            --expire-time=0 \
+            --action='rollback=Rollback snapshot' \
+            --action='stay=Stay in snapshot' \
+            'Snapshot booted successfully' \
+            'You are running in a Btrfs snapshot. Press here if you want to restore it permanently.'
+    )"
+
+    if [[ "$action" == "rollback" ]]; then
+        spawn_terminal
+    fi
+}
+
+notify_user

@@ -57,6 +57,7 @@ declare -ar FZF_COMMON_OPTIONS=(
 
 declare -a OVERLAY_FILES=(
     "/usr/local/bin/cachyos-recovery"
+    "/usr/local/bin/cachyos-recovery-notifier"
     "/usr/lib/initcpio/hooks/overlayfs"
     "/usr/lib/initcpio/install/overlayfs"
     "/usr/lib/systemd/system/overlayfs-hook.service"
@@ -664,15 +665,19 @@ function rollback_btrfs_snapshot() {
         rollback \
         boot
     local -i completed=0
+    local snapshot="${1:-}"
 
     # Stage 0: Preparing
-    snapshot="$(cat /proc/cmdline \
-        | tr ' ' '\n' \
-        | grep -Pox "rootflags=subvolid=\K([0-9]+)"
-    )"
 
     if [[ -z "$snapshot" ]]; then
-        die "You are not booted in snapshot"
+        snapshot="$(cat /proc/cmdline \
+            | tr ' ' '\n' \
+            | grep -Pox "rootflags=subvolid=\K([0-9]+)"
+        )"
+    fi
+
+    if ! [[ "$snapshot" =~ ^[0-9]+$ ]]; then
+        die "You have not specified correct ID and not booted in snapshot"
     fi
 
     msg "Starting snapshot rollback..."
@@ -909,7 +914,7 @@ function main() {
             start
             ;;
         rollback)
-            rollback_btrfs_snapshot
+            rollback_btrfs_snapshot "${@:2:$#}"
             ;;
         *)
             usage

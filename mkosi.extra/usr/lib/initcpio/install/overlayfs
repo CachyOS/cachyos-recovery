@@ -22,7 +22,8 @@ build() {
         btrfs \
         findmnt \
         logger \
-        /usr/local/bin/cachyos-recovery
+        /usr/local/bin/cachyos-recovery \
+        /usr/local/bin/cachyos-recovery-notifier
 
     if command -v add_systemd_unit &>/dev/null; then
         add_binary /usr/lib/initcpio/hooks/overlayfs
