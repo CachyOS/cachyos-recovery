@@ -570,14 +570,14 @@ function regenerate_boot_files() {
         }
     done < <(get_installed_kernels)
 
-    if ! umount "${chroot}/var/cache"; then
-        error "Failed to unmount cache directory for mkinitcpio"
+    if ! regenerate_bootloader_config "${esp}" "${chroot}"; then
+        error "Failed to re-generate bootloader configuration, rollback is not possible"
         umount "${chroot}/boot" || error "Failed to unmount /boot overlay"
         return 1
     fi
 
-    if ! regenerate_bootloader_config "${esp}" "${chroot}"; then
-        error "Failed to re-generate bootloader configuration, rollback is not possible"
+    if ! umount "${chroot}/var/cache"; then
+        error "Failed to unmount cache directory for mkinitcpio"
         umount "${chroot}/boot" || error "Failed to unmount /boot overlay"
         return 1
     fi
