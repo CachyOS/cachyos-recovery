@@ -485,9 +485,12 @@ function move_nested_subvolumes() {
 
         if [[ ! -d "${new}/${subvol}" ]]; then
             if ! mv -T -v -- "${old}/${subvol}" "${new}/${subvol}"; then
-                echo "Failed to move ${subvol}"
+                error "Failed to move ${subvol}"
                 return 1
             fi
+        else
+            error "Subvolume already exists: ${new}/${subvol}"
+            return 1
         fi
     done < <(echo "$output")
 
@@ -537,7 +540,7 @@ function regenerate_boot_files() {
     if [[ "$esp" != "/boot" ]]; then
         if ! regenerate_bootloader_config "${esp}" "${chroot}"; then
             error "Failed to re-generate GRUB configuration, rollback is not possible"
-            umount "${chroot}/boot"
+            umount "${chroot}/boot" || error "Failed to unmount /boot overlay"
             return 1
         fi
 
@@ -548,6 +551,7 @@ function regenerate_boot_files() {
     # hook enabled
     if ! mount -t tmpfs cowspace "${chroot}/var/cache"; then
         error "Failed to mount tmpfs for cache in chroot"
+        umount "${chroot}/boot" || error "Failed to unmount /boot overlay"
         return 1
     fi
 
@@ -560,24 +564,28 @@ function regenerate_boot_files() {
     while read -r pkgver; do
         echo "/usr/lib/modules/${pkgver}/vmlinuz" | chroot "${chroot}" $initramfs_generator || {
             error "Failed to re-generate initramfs for snapshot, rollback is not possible"
-            umount "${chroot}/boot"
+            umount "${chroot}/boot" || error "Failed to unmount /boot overlay"
             return 1
         }
     done < <(get_installed_kernels)
 
     if ! umount "${chroot}/var/cache"; then
         error "Failed to unmount cache directory for mkinitcpio"
-        umount "${chroot}/boot"
+        umount "${chroot}/boot" || error "Failed to unmount /boot overlay"
         return 1
     fi
 
     if ! regenerate_bootloader_config "${esp}" "${chroot}"; then
         error "Failed to re-generate bootloader configuration, rollback is not possible"
-        umount "${chroot}/boot"
+        umount "${chroot}/boot" || error "Failed to unmount /boot overlay"
         return 1
     fi
 
-    umount "${chroot}/boot"
+    if ! umount "${chroot}/boot"; then
+        error "Failed to unmount /boot overlay"
+        return 1
+    fi
+
     return 0
 }
 
@@ -616,6 +624,7 @@ function copy_boot_files() {
         if ! cp -a -T -- "${upper}/${file}" "${target}/${file}"; then
             error "Failed to copy ${file} file to ${target}"
             status=1
+            break
         fi
     done < <(LC_ALL=C.UTF-8 find "${upper}" -printf "%P\0")
 
@@ -654,6 +663,7 @@ function rollback_btrfs_snapshot() {
         oldroot \
         rollback \
         boot
+    local -i completed=0
 
     # Stage 0: Preparing
     snapshot="$(cat /proc/cmdline \
@@ -696,9 +706,12 @@ function rollback_btrfs_snapshot() {
         [[ -z "${tmp:-}" ]] && return 0
         if mountpoint -q "${tmp}/root" 2>/dev/null; then
             # Re-incorporate nested volumes on fail
-            if [[ -n "${oldroot:-}" && -d "${oldroot}" ]]; then
+            if [[ -n "${oldroot:-}" && -d "${oldroot}" && "$completed" != "1" ]]; then
                 if [[ ! -d "${rollback}" ]]; then
-                    move_nested_subvolumes "${tmp}/root/@" "${oldroot}" || true
+                    move_nested_subvolumes "${tmp}/root/@" "${oldroot}" || {
+                        error "Failed to restore nested subvolumes, your system may be broken"
+                        return 1
+                    }
                     mv -T -- "${tmp}/root/@" "${rollback}" || {
                         error "Failed to move new root, your system may be broken"
                         return 1
@@ -775,6 +788,8 @@ function rollback_btrfs_snapshot() {
     if ! copy_boot_files "${boot}/overlay/upper" "${boot}/content" "${target}/boot"; then
         die "Failed to copy staged boot files in ESP partition, returning old root..."
     fi
+
+    completed=1
 
     if ! btrfs --quiet subvolume delete --commit-after "${oldroot}"; then
         error "Failed to remove ${oldroot}"
