@@ -135,8 +135,8 @@ function bootstrap() {
         --no-hwaccel \
         --no-reset-env \
         --vt=1 \
-        --font-engine=freetype \
-        --font-size=24 \
+        --font-engine=pango \
+        --font-size=20 \
         --term=xterm-256color \
         --login \
         --oneshot -- /usr/local/bin/cachyos-recovery start || true
