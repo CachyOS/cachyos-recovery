@@ -649,12 +649,18 @@ function rollback_btrfs_snapshot() {
         [[ -z "${tmp:-}" ]] && return 0
         if mountpoint -q "${tmp}/root" 2>/dev/null; then
             # Re-incorporate nested volumes on fail
-            if [[ -n "${oldroot:-}" && -d "${oldroot}" && ! -d "${rollback}" ]]; then
-                move_nested_subvolumes "${tmp}/root/@" "${oldroot}" || true
-            fi
-
-            if [[ ! -d "${tmp}/root/@" ]]; then
-                mv -T -- "${oldroot}" "${tmp}/root/@" || error "Failed to restore old root"
+            if [[ -n "${oldroot:-}" && -d "${oldroot}" ]]; then
+                if [[ ! -d "${rollback}" ]]; then
+                    move_nested_subvolumes "${tmp}/root/@" "${oldroot}" || true
+                    mv -T -- "${tmp}/root/@" "${rollback}" || {
+                        error "Failed to move new root, your system may be broken"
+                        return 1
+                    }
+                fi
+                mv -T -- "${oldroot}" "${tmp}/root/@" || {
+                    error "Failed to restore old root, your system may be broken"
+                    return 1
+                }
             fi
 
             if [[ -n "${rollback:-}" && -d "${rollback}" ]]; then
@@ -699,8 +705,6 @@ function rollback_btrfs_snapshot() {
         die "Failed to restore snapshot, old root preserved"
     fi
 
-    umount -R "${tmp}/snapshot" || die "Failed to unmount snapshot"
-
     # Stage 3: Make new root
     oldroot="$(mktemp -t -u -p "${tmp}/root" '@oldroot.XXXXXXX')"
     step "Moving new root in place of the old one..."
@@ -710,7 +714,6 @@ function rollback_btrfs_snapshot() {
     fi
 
     if ! mv -T -- "${rollback}" "${tmp}/root/@"; then
-        mv -T -- "${oldroot}" "${tmp}/root/@" || die "Failed to restore old root"
         die "Failed to move new root"
     fi
 
@@ -726,13 +729,11 @@ function rollback_btrfs_snapshot() {
     oldboot="$(mktemp -t -u -p "${tmp}/root/@" 'boot.XXXXXXX')"
 
     if ! cp -a -T -- "${target}/boot" "${oldboot}"; then
-        mv -T -- "${tmp}/root/@" "${rollback}" || die "Failed to move new root"
         die "Failed to save old boot content, returning old root..."
     fi
 
     if ! cp -a -T -- "${boot}" "${target}/boot"; then
         mv -T -- "${oldboot}" "${target}/boot" || die "Failed to return old boot, your system can be broken"
-        mv -T -- "${tmp}/root/@" "${rollback}" || die "Failed to move new root, your system can be broken"
         die "Failed to copy staged boot files in ESP partition, returning old root..."
     fi
 
