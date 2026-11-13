@@ -536,18 +536,6 @@ function regenerate_boot_files() {
         return 1
     fi
 
-    # Do not regenerate initramfs files if ESP partition is not supposed to be
-    # mount in /boot. This is only possible for GRUB.
-    if [[ "$esp" != "/boot" ]]; then
-        if ! regenerate_bootloader_config "${esp}" "${chroot}"; then
-            error "Failed to re-generate GRUB configuration, rollback is not possible"
-            umount "${chroot}/boot" || error "Failed to unmount /boot overlay"
-            return 1
-        fi
-
-        return 0
-    fi
-
     # Fixes annoying fontconfig cache errors if mkinitcpio config has plymouth
     # hook enabled
     if ! mount -t tmpfs cowspace "${chroot}/var/cache"; then
@@ -760,6 +748,7 @@ function rollback_btrfs_snapshot() {
         mountpoint -q "${tmp}/snapshot" 2>/dev/null && umount -R "${tmp}/snapshot" 2>/dev/null
         mountpoint -q "${tmp}/snapshot" 2>/dev/null || rmdir "${tmp}/snapshot" 2>/dev/null
         rmdir "${tmp}" 2>/dev/null || true
+        [[ ! -d "${boot}" ]] && return 0
         mountpoint -q "${boot}/overlay" 2>/dev/null && umount "${boot}/overlay" 2>/dev/null
         mountpoint -q "${boot}/overlay" 2>/dev/null || rmdir "${boot}/overlay" 2>/dev/null
         rm -rf "${boot}/content" && rmdir "${boot}"
@@ -781,12 +770,16 @@ function rollback_btrfs_snapshot() {
         return 1
     fi
 
-    if ! regenerate_boot_files "${boot}" "${tmp}/snapshot" "${esp}"; then
-        error "Failed to regenerate boot files, snapshot isn't recoverable"
-        return 1
-    fi
+    # Do not regenerate boot files if ESP partition is not supposed to be
+    # mount in /boot. This is only possible for GRUB.
+    if [[ "$esp" == "/boot" ]]; then
+        if ! regenerate_boot_files "${boot}" "${tmp}/snapshot" "${esp}"; then
+            error "Failed to regenerate boot files, snapshot isn't recoverable"
+            return 1
+        fi
 
-    info "Generated new /boot files, starting snapshot restore..."
+        info "Generated new /boot files, starting snapshot restore..."
+    fi
 
     # Stage 2: Create new root from snapshot
     rollback="$(mktemp -t -u -p "${tmp}/root" '@rollback.XXXXXXX')"
@@ -820,11 +813,12 @@ function rollback_btrfs_snapshot() {
     fi
 
     # Stage 5: Move staged files to real /boot
-    step "Copying new /boot files to ESP partition..."
-
-    if ! copy_boot_files "${boot}/overlay/upper" "${boot}/content" "${tmp}/snapshot/boot"; then
-        error "Failed to copy staged boot files in ESP partition, returning old root..."
-        return 1
+    if [[ "$esp" == "/boot" ]]; then
+        step "Copying new /boot files to ESP partition..."
+        if ! copy_boot_files "${boot}/overlay/upper" "${boot}/content" "${tmp}/snapshot/boot"; then
+            error "Failed to copy staged boot files in ESP partition, returning old root..."
+            return 1
+        fi
     fi
 
     # Remove pacman lock from snapshot after restoring
