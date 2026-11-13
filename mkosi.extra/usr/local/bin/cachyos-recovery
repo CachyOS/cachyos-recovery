@@ -243,7 +243,7 @@ function boot_btrfs_snapshot() {
 
     msg "Trying to boot Btrfs snapshot"
 
-    if ! snapshot="$(select_btrfs_snapshot)"; then
+    if ! snapshot="$(select_btrfs_snapshot "Select Btrfs snapshot to boot")"; then
         return 0
     fi
 
@@ -373,6 +373,7 @@ function select_kernel() {
 function select_btrfs_snapshot() {
     local snapshots_or_error
     local selected
+    local header="${1}"
 
     if ! snapshots_or_error="$(get_btrfs_snapshots /sysroot)"; then
         show_error "Failed to get Btrfs snapshots" "${snapshots_or_error}"
@@ -383,7 +384,7 @@ function select_btrfs_snapshot() {
         "${FZF_COMMON_OPTIONS[@]}"
         --delimiter='\t'
         --exact
-        --header="Select Btrfs snapshot to boot"
+        --header="${header}"
         --with-shell='/usr/bin/bash -c'
         --preview="$(cat <<'EOF'
 subvol_id={1} date={2} path={3}
@@ -438,22 +439,26 @@ function regenerate_bootloader_config() {
     local esp="${1}"
     local chroot="${2}"
 
-    if [[ -e "${esp}/EFI/limine/limine_x64.efi" ]] && command -v limine-update &>/dev/null; then
+    if [[ -e "${chroot}/${esp}/EFI/limine/limine_x64.efi" && -x "${chroot}/usr/bin/limine-update" ]]; then
         chroot "${chroot}" limine-update || {
-            die "Failed to generate Limine config"
+            error "Failed to generate Limine config"
+            return 1
         }
-    elif [[ -e "${esp}/EFI/systemd/systemd-bootx64.efi" ]] && command -v sdboot-manage &>/dev/null; then
+    elif [[ -e "${chroot}/${esp}/EFI/systemd/systemd-bootx64.efi" && -x "${chroot}/usr/bin/sdboot-manage" ]]; then
         chroot "${chroot}" sdboot-manage gen || {
-            die "Failed to generate systemd-boot config"
+            error "Failed to generate systemd-boot config"
+            return 1
         }
-    elif [[ -e "${esp}/EFI/refind/refind_x64.efi" ]]; then
+    elif [[ -e "${chroot}/${esp}/EFI/refind/refind_x64.efi" ]]; then
         info "rEFInd does not require configuration update"
-    elif [[ -n "$(compgen -G "${esp}/EFI/*/grubx64.efi")" ]]; then
+    elif [[ -n "$(compgen -G "${chroot}/${esp}/EFI/*/grubx64.efi")" && -x "${chroot}/usr/bin/grub-mkconfig" ]]; then
         chroot "${chroot}" grub-mkconfig -o /boot/grub/grub.cfg || {
-            die "Failed to generate systemd-boot config"
+            error "Failed to generate systemd-boot config"
+            return 1
         }
     else
-        die "Failed to detect bootloader and update its configuration"
+        error "Failed to detect bootloader and update its configuration"
+        return 1
     fi
 
     return 0
@@ -499,39 +504,34 @@ function move_nested_subvolumes() {
 }
 
 function regenerate_boot_files() {
-    local tmp="${1}"
+    local boot="${1}"
     local chroot="${2}"
     local esp="${3:-/boot}"
     local kernel pkgver initramfs_generator
 
     step "Regenerating new /boot files for snapshot..."
 
-    if [[ -z "${tmp:-}" ]]; then
+    if [[ -z "${boot:-}" ]]; then
         error "Temporary directory must be specified"
         return 1
     fi
 
-    if ! mountpoint -q "$esp"; then
-        error "ESP is not mounted"
-        return 1
-    fi
-
-    if ! mkdir -p "${tmp}/overlay"; then
+    if ! mkdir -p "${boot}/overlay"; then
         error "Failed to create overlay directory"
         return 1
     fi
 
-    if ! mkdir -p "${tmp}/content"; then
+    if ! mkdir -p "${boot}/content"; then
         error "Failed to create temp content directory"
         return 1
     fi
 
-    if ! cp -a -T -- /boot "${tmp}/content"; then
-        error "Failed to copy /boot to ${tmp}/content"
+    if ! cp -a -T -- "${chroot}"/boot "${boot}/content"; then
+        error "Failed to copy /boot to ${boot}/content"
         return 1
     fi
 
-    if ! mount_overlay "${tmp}/content" "${tmp}/overlay" "${chroot}/boot"; then
+    if ! mount_overlay "${boot}/content" "${boot}/overlay" "${chroot}/boot"; then
         error "Failed to create overlay mount for /boot"
         return 1
     fi
@@ -556,7 +556,8 @@ function regenerate_boot_files() {
         return 1
     fi
 
-    if command -v limine-mkinitcpio &>/dev/null; then
+
+    if [[ -x "${chroot}/usr/share/libalpm/scripts/limine-mkinitcpio-install" ]]; then
         initramfs_generator="/usr/share/libalpm/scripts/limine-mkinitcpio-install"
     else
         initramfs_generator="/usr/share/libalpm/scripts/mkinitcpio install"
@@ -568,7 +569,7 @@ function regenerate_boot_files() {
             umount "${chroot}/boot" || error "Failed to unmount /boot overlay"
             return 1
         }
-    done < <(get_installed_kernels)
+    done < <(get_installed_kernels "${chroot}")
 
     if ! regenerate_bootloader_config "${esp}" "${chroot}"; then
         error "Failed to re-generate bootloader configuration, rollback is not possible"
@@ -654,6 +655,22 @@ function copy_boot_files() {
     return 0
 }
 
+function rollback_btrfs_snapshot_wrapper() {
+    msg "Rolling back of Btrfs snapshot"
+
+    if ! snapshot="$(select_btrfs_snapshot "Select Btrfs snapshot to rollback")"; then
+        return 0
+    fi
+
+    if ! rollback_btrfs_snapshot "${snapshot}" "/sysroot"; then
+        error "Failed to rollback Btrfs snapshot. Press enter to return in main menu."
+        read -r _
+        return 1
+    fi
+
+    return 0
+}
+
 function rollback_btrfs_snapshot() {
     local fstype \
         tmp \
@@ -666,6 +683,7 @@ function rollback_btrfs_snapshot() {
         boot
     local -i completed=0
     local snapshot="${1:-}"
+    local root="${2:-"/"}"
 
     # Stage 0: Preparing
 
@@ -677,12 +695,13 @@ function rollback_btrfs_snapshot() {
     fi
 
     if ! [[ "$snapshot" =~ ^[0-9]+$ ]]; then
-        die "You have not specified correct ID and not booted in snapshot"
+        error "You have not specified correct ID and not booted in snapshot"
+        return 1
     fi
 
     msg "Starting snapshot rollback..."
 
-    device="$(findmnt -vno SOURCE / 2>/dev/null)"
+    device="$(findmnt -vno SOURCE "${root}" 2>/dev/null)"
 
     # Find root if we're booted in snapshot
     if [[ "${device}" == "overlay" ]]; then
@@ -695,16 +714,19 @@ function rollback_btrfs_snapshot() {
     fi
 
     if [[ -z "$device" || ! -b "${device}" ]]; then
-        die "Failed to get real device of root file system"
+        error "Failed to get real device of root file system"
+        return 1
     fi
 
     if ! tmp="$(mktemp -d -t mount.XXXXXX)"; then
-        die "Failed to create temporary mount directory"
+        error "Failed to create temporary mount directory"
+        return 1
     fi
 
     if ! boot="$(mktemp -d -t boot.XXXXXX)"; then
         rmdir "${tmp}"
-        die "Failed to create temporary boot directory"
+        error "Failed to create temporary boot directory"
+        return 1
     fi
 
     function _cleanup_rollback() {
@@ -735,11 +757,11 @@ function rollback_btrfs_snapshot() {
             umount "${tmp}/root" && rmdir "${tmp}/root"
         fi
 
-        mountpoint -q "${tmp}/snapshot" 2>/dev/null && umount -R "${tmp}/snapshot"
-        mountpoint -q "${tmp}/snapshot" 2>/dev/null || rmdir "${tmp}/snapshot"
-        rmdir "${tmp}" || true
-        mountpoint -q "${boot}/overlay" 2>/dev/null && umount "${boot}/overlay"
-        mountpoint -q "${boot}/overlay" 2>/dev/null || rmdir "${boot}/overlay"
+        mountpoint -q "${tmp}/snapshot" 2>/dev/null && umount -R "${tmp}/snapshot" 2>/dev/null
+        mountpoint -q "${tmp}/snapshot" 2>/dev/null || rmdir "${tmp}/snapshot" 2>/dev/null
+        rmdir "${tmp}" 2>/dev/null || true
+        mountpoint -q "${boot}/overlay" 2>/dev/null && umount "${boot}/overlay" 2>/dev/null
+        mountpoint -q "${boot}/overlay" 2>/dev/null || rmdir "${boot}/overlay" 2>/dev/null
         rm -rf "${boot}/content" && rmdir "${boot}"
     }
 
@@ -747,14 +769,21 @@ function rollback_btrfs_snapshot() {
 
     # Stage 1: Try to check if we can regenerate all boot files before
     # restoring snapshot
+    if ! mount_snapshot "${snapshot}" "${device}" "${tmp}/snapshot"; then
+        error "Failed to mount snapshot"
+        return 1
+    fi
+
     esp="$(bootctl -p 2>/dev/null || echo "/boot")"
 
-    if ! mount_snapshot "${snapshot}" "${device}" "${tmp}/snapshot"; then
-        die "Failed to mount snapshot"
+    if ! chroot "${tmp}/snapshot" mount "$esp"; then
+        error "Failed to mount ${esp} partition"
+        return 1
     fi
 
     if ! regenerate_boot_files "${boot}" "${tmp}/snapshot" "${esp}"; then
-        die "Failed to regenerate boot files, snapshot isn't recoverable"
+        error "Failed to regenerate boot files, snapshot isn't recoverable"
+        return 1
     fi
 
     info "Generated new /boot files, starting snapshot restore..."
@@ -765,7 +794,8 @@ function rollback_btrfs_snapshot() {
     step "Creating new root subvolume from the snapshot..."
 
     if ! create_new_btrfs_root "${tmp}" "${device}" "${rollback}"; then
-        die "Failed to restore snapshot, old root preserved"
+        error "Failed to restore snapshot, old root preserved"
+        return 1
     fi
 
     # Stage 3: Make new root
@@ -773,25 +803,28 @@ function rollback_btrfs_snapshot() {
     step "Moving new root in place of the old one..."
 
     if ! mv -T -- "${tmp}/root/@" "${oldroot}"; then
-        die "Failed to move old root"
+        error "Failed to move old root"
+        return 1
     fi
 
     if ! mv -T -- "${rollback}" "${tmp}/root/@"; then
-        die "Failed to move new root"
+        error "Failed to move new root"
+        return 1
     fi
 
     # Stage 4: Move all nested subvolumes
     step "Moving nested subvolumes from old root to new one..."
     if ! move_nested_subvolumes "${oldroot}" "${tmp}/root/@"; then
-        die "Failed to move nested subvolumes, old root preserved"
+        error "Failed to move nested subvolumes, old root preserved"
+        return 1
     fi
 
     # Stage 5: Move staged files to real /boot
     step "Copying new /boot files to ESP partition..."
-    target=$([[ "${esp}" == "/boot" ]] && echo "/" || echo "${tmp}/root/@")
 
-    if ! copy_boot_files "${boot}/overlay/upper" "${boot}/content" "${target}/boot"; then
-        die "Failed to copy staged boot files in ESP partition, returning old root..."
+    if ! copy_boot_files "${boot}/overlay/upper" "${boot}/content" "${tmp}/snapshot/boot"; then
+        error "Failed to copy staged boot files in ESP partition, returning old root..."
+        return 1
     fi
 
     # Remove pacman lock from snapshot after restoring
@@ -844,9 +877,9 @@ function start() {
         descriptions["${action}"]="$BTRFS_BOOT_SNAPSHOT_DESC"
 
         # Rollback snapshot
-        #action="$((count++)). $BTRFS_ROLLBACK_SNAPSHOT_LABEL"
-        #actions["$action"]="rollback_btrfs_snapshot"
-        #descriptions["$action"]="$BTRFS_ROLLBACK_SNAPSHOT_DESC"
+        action="$((count++)). $BTRFS_ROLLBACK_SNAPSHOT_LABEL"
+        actions["$action"]="rollback_btrfs_snapshot_wrapper"
+        descriptions["$action"]="$BTRFS_ROLLBACK_SNAPSHOT_DESC"
     fi
 
     # System reboot
@@ -907,7 +940,7 @@ function main() {
         die "Please, run script as root"
     fi
 
-    if [[ "$1" == "--debug" ]]; then
+    if [[ "${1:-}" == "--debug" ]]; then
         set -x
         shift
     fi
