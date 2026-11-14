@@ -616,7 +616,7 @@ function copy_boot_files() {
             status=1
             break
         fi
-    done < <(LC_ALL=C.UTF-8 find "${upper}" -printf "%P\0")
+    done < <(LC_ALL=C.UTF-8 find "${upper}" -mindepth 1 -printf "%P\0")
 
     # Revert changes back from lowerdir of overlay, which is copy of real boot
     if ((status)); then
@@ -636,7 +636,7 @@ function copy_boot_files() {
                     sync "${target}/${file}"
                 fi
             fi
-        done < <(LC_ALL=C.UTF-8 find "${upper}" -printf "%P\0")
+        done < <(LC_ALL=C.UTF-8 find "${upper}" -mindepth 1 -printf "%P\0")
         return 1
     fi
 
