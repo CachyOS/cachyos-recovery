@@ -659,6 +659,27 @@ function rollback_btrfs_snapshot_wrapper() {
     return 0
 }
 
+function find_esp_partition() {
+    local root="${1}"
+    local esp
+
+    while IFS= read -r target; do
+        case "$target" in
+            /boot|/boot/efi|/efi)
+                esp="$target"
+                break
+                ;;
+        esac
+    done < <(findmnt --fstab \
+        --types vfat \
+        --tab-file "${root}/etc/fstab" \
+        --noheadings \
+        --output TARGET || true
+    )
+
+    echo "${esp:-}"
+}
+
 function rollback_btrfs_snapshot() {
     local fstype \
         tmp \
@@ -763,7 +784,14 @@ function rollback_btrfs_snapshot() {
         return 1
     fi
 
-    esp="$(bootctl -p 2>/dev/null || echo "/boot")"
+    esp="$(find_esp_partition "${tmp}/snapshot")"
+
+    # We don't support any other ESP locations expect /boot, /efi and /boot/efi
+    # in CachyOS.
+    if [[ -z "${esp}" ]]; then
+        error "No ESP partition was found to mount"
+        return 1
+    fi
 
     if ! chroot "${tmp}/snapshot" mount "$esp"; then
         error "Failed to mount ${esp} partition"
