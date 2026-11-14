@@ -507,12 +507,22 @@ function regenerate_boot_files() {
     local boot="${1}"
     local chroot="${2}"
     local esp="${3:-/boot}"
-    local kernel pkgver initramfs_generator
+    local kernel pkgver initramfs_generator kernels
 
     step "Regenerating new /boot files for snapshot..."
 
     if [[ -z "${boot:-}" ]]; then
         error "Temporary directory must be specified"
+        return 1
+    fi
+
+    if ! kernels="$(get_installed_kernels "${chroot}")"; then
+        error "Failed to find installed kernels in snapshot"
+        return 1
+    fi
+
+    if [[ -z "$kernels" ]]; then
+        error "No kernels were found in snapshot"
         return 1
     fi
 
@@ -544,7 +554,6 @@ function regenerate_boot_files() {
         return 1
     fi
 
-
     if [[ -x "${chroot}/usr/share/libalpm/scripts/limine-mkinitcpio-install" ]]; then
         initramfs_generator="/usr/share/libalpm/scripts/limine-mkinitcpio-install"
     else
@@ -557,7 +566,7 @@ function regenerate_boot_files() {
             umount "${chroot}/boot" || error "Failed to unmount /boot overlay"
             return 1
         }
-    done < <(get_installed_kernels "${chroot}")
+    done <<< "$kernels"
 
     if ! regenerate_bootloader_config "${esp}" "${chroot}"; then
         error "Failed to re-generate bootloader configuration, rollback is not possible"
