@@ -1059,7 +1059,6 @@ CachyOS recovery utility
 Actions:
     start      Start system recovery process
     rollback   Rollback Btrfs snapshot
-    regenerate Regenerate /boot files
 EOF
 }
 
