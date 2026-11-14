@@ -34,6 +34,11 @@ function generate_cmdline() {
     srcdev_fsroot="$(findmnt -no FSROOT /)"
     root_fstype="$(findmnt -no FSTYPE /)"
 
+    if [[ "$srcdev" == "overlay" ]]; then
+        echo "Your root is overlay, not possible to detect device" >&2
+        return 1
+    fi
+
     if [[ -n "$srcdev_uuid" ]]; then
         options="root=UUID=${srcdev_uuid}"
     elif [[ -n "$srcdev_partuuid" ]]; then
@@ -76,7 +81,7 @@ function generate_cmdline() {
 }
 
 function install_recovery() {
-    local source target esp
+    local source target esp cmdline
 
     esp="$(bootctl --print-esp-path 2>/dev/null || echo /boot)"
 
@@ -110,8 +115,13 @@ function install_recovery() {
         return 1
     fi
 
+    if ! cmdline="$(generate_cmdline)" || [[ -z "$cmdline" ]]; then
+        echo "Failed to generate recovery kernel command line" >&2
+        return 1
+    fi
+
     if ! ukify build \
-        --cmdline="$(generate_cmdline)" \
+        --cmdline="${cmdline}" \
         --output="${target}.extra.d/root.addon.efi"; then
         echo "Failed to generate command-line addon for CachyOS recovery image" >&2
         return 1
