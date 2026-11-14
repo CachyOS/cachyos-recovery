@@ -503,26 +503,79 @@ function move_nested_subvolumes() {
     return 0
 }
 
+# Remove orphans files in overlay to generate bootloader config wihtout them
+function cleanup_boot_orphans() {
+    local root="${1}"
+    local kernels="${2}"
+    local kernel kver file filename vmlinux output salt
+    local -A versions=()
+    local -A names=()
+    local -A salts=()
+
+    while read -r kver; do
+        kernel="$(cat "${root}/usr/lib/modules/${kver}/pkgbase")"
+        salt="$(md5sum -- "${root}/usr/lib/modules/${kver}/vmlinuz")"
+        salt="${salt%% *}"
+        [[ -n "$salt" ]] && salts["$salt"]="$kernel"
+        names["$kernel"]="true"
+        versions["$kver"]="true"
+    done <<< "$kernels"
+
+    while read -r file; do
+        [[ -s "${file}" ]] || continue
+
+        filename="${file##*/}"
+        [[ "${filename}" != cachyos-recovery.efi ]] || continue
+
+        case "${filename}" in
+            vmlinuz-*) # vmlinux files
+                kernel="${filename#vmlinuz-}"
+                salt="$(md5sum -- "${file}")"
+                salt="${salt%% *}"
+                if [[ -z "${names[$kernel]:-}" && -z "${salts[$salt]:-}" ]]; then
+                    step "${filename} is no longer associated with package, so it will be removed"
+                    rm -f "${file}"
+                fi
+                ;;
+            initramfs-*.img|*.efi) # intiramfs
+                if ! output="$(lsinitcpio "$file" 2>/dev/null)"; then
+                    continue
+                fi
+
+                kver=""
+                while IFS= read -r line; do
+                    if [[ "$line" =~ ^usr/lib/modules/([^/]+)(/|$) ]]; then
+                        kver="${BASH_REMATCH[1]}"
+                        break
+                    fi
+                done <<< "$output"
+
+                [[ -n "${kver}" ]] || continue
+                [[ -z "${versions[$kver]:-}" ]] || continue
+                step "${filename} is no longer associated with package, so it will be removed"
+                rm -f -- "${file}"
+                ;;
+        esac
+    done < <(LC_ALL=C.UTF-8 find "${root}/boot" -type f \
+        \( -name 'vmlinuz-*' \
+        -o -name 'initramfs-*.img' \
+        -o -iname '*.efi' \)
+    )
+
+    return 0
+}
+
 function regenerate_boot_files() {
     local boot="${1}"
     local chroot="${2}"
     local esp="${3:-/boot}"
+    local kernels="${4}"
     local kernel pkgver initramfs_generator kernels
 
     step "Regenerating new /boot files for snapshot..."
 
     if [[ -z "${boot:-}" ]]; then
         error "Temporary directory must be specified"
-        return 1
-    fi
-
-    if ! kernels="$(get_installed_kernels "${chroot}")"; then
-        error "Failed to find installed kernels in snapshot"
-        return 1
-    fi
-
-    if [[ -z "$kernels" ]]; then
-        error "No kernels were found in snapshot"
         return 1
     fi
 
@@ -567,6 +620,8 @@ function regenerate_boot_files() {
             return 1
         }
     done <<< "$kernels"
+
+    cleanup_boot_orphans "${chroot}" "${kernels}" || true
 
     if ! regenerate_bootloader_config "${esp}" "${chroot}"; then
         error "Failed to re-generate bootloader configuration, rollback is not possible"
@@ -613,36 +668,64 @@ function create_new_btrfs_root() {
     return 0
 }
 
+function is_whiteout() {
+    local file="${1}"
+    [[ -c "${file}" && "$(stat -c '%t:%T' "${file}")" == "0:0" ]] && return 0
+    getfattr -n trusted.overlay.whiteout "${file}" &>/dev/null && return 0
+    return 1
+}
+
 function copy_boot_files() {
     local upper="${1}"
     local lower="${2}"
     local target="${3}"
     local -i status=0
+    local src dest
 
-    while read -rd '' file; do
-        if ! cp -a -T -- "${upper}/${file}" "${target}/${file}"; then
+    while IFS= read -rd '' file; do
+        src="${upper}/${file}"
+        dest="${target}/${file}"
+
+        if is_whiteout "$src"; then
+            if ! rm -f -- "$dest"; then
+                status=1
+                break
+            fi
+            continue
+        fi
+
+        if ! mkdir -p -- "$(dirname -- "$dest")"; then
+            error "Failed to create parent directory for ${file}"
+            status=1
+            break
+        fi
+
+        if ! cp -a -T -- "$src" "$dest"; then
             error "Failed to copy ${file} file to ${target}"
             status=1
             break
         fi
-    done < <(LC_ALL=C.UTF-8 find "${upper}" -mindepth 1 -printf "%P\0")
+    done < <(LC_ALL=C.UTF-8 find "${upper}" -mindepth 1 ! -type d -printf "%P\0")
 
     # Revert changes back from lowerdir of overlay, which is copy of real boot
     if ((status)); then
         error "Applying of changes to /boot failed, trying to revert..."
-        while read -rd '' file; do
+        while IFS= read -rd '' file; do
+            src="${lower}/${file}"
+            dest="${target}/${file}"
+
             # Remove files that don't exist in original boot directory
-            if [[ ! -e "${lower}/${file}" ]]; then
-                if [[ -d "${target}/${file}" ]]; then
-                    rm -rf "${target:?}/${file}"
+            if [[ ! -e "$src" ]]; then
+                if [[ -d "$dest" ]]; then
+                    rm -rf "$dest"
                 else
-                    rm -f "${target}/${file}"
+                    rm -f "$dest"
                 fi
             else
-                if ! cp -a -T -- "${lower}/${file}" "${target}/${file}"; then
+                if ! cp -a -T -- "$src" "$dest"; then
                     error "Failed to return original of ${file} to ESP ${target}"
                 else
-                    sync "${target}/${file}"
+                    sync "$dest"
                 fi
             fi
         done < <(LC_ALL=C.UTF-8 find "${upper}" -mindepth 1 -printf "%P\0")
@@ -698,7 +781,8 @@ function rollback_btrfs_snapshot() {
         esp \
         oldroot \
         rollback \
-        boot
+        boot \
+        kernels
     local -i completed=0
     local snapshot="${1:-}"
     local root="${2:-"/"}"
@@ -802,6 +886,16 @@ function rollback_btrfs_snapshot() {
         return 1
     fi
 
+    if ! kernels="$(get_installed_kernels "${tmp}/snapshot")"; then
+        error "Failed to find installed kernels in snapshot"
+        return 1
+    fi
+
+    if [[ -z "$kernels" ]]; then
+        error "No kernels were found in snapshot"
+        return 1
+    fi
+
     if ! chroot "${tmp}/snapshot" mount "$esp"; then
         error "Failed to mount ${esp} partition"
         return 1
@@ -810,7 +904,7 @@ function rollback_btrfs_snapshot() {
     # Do not regenerate boot files if ESP partition is not supposed to be
     # mount in /boot. This is only possible for GRUB.
     if [[ "$esp" == "/boot" ]]; then
-        if ! regenerate_boot_files "${boot}" "${tmp}/snapshot" "${esp}"; then
+        if ! regenerate_boot_files "${boot}" "${tmp}/snapshot" "${esp}" "${kernels}"; then
             error "Failed to regenerate boot files, snapshot isn't recoverable"
             return 1
         fi
@@ -856,6 +950,9 @@ function rollback_btrfs_snapshot() {
             error "Failed to copy staged boot files in ESP partition, returning old root..."
             return 1
         fi
+
+        step "Purging orphan entities..."
+        cleanup_boot_orphans "${tmp}/snapshot" "${kernels}" || true
     fi
 
     # Remove pacman lock from snapshot after restoring
