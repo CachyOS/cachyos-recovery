@@ -176,7 +176,7 @@ function generate_temporary_initramfs() {
     local snapshot="$1"
     local kver="$2"
     local workdir="$3"
-    local error root
+    local error dest
 
     if ! error="$(mkdir -p "${workdir}/overlay" 2>&1)"; then
         echo "Failed to create overlay directory: ${error}"
@@ -191,14 +191,14 @@ function generate_temporary_initramfs() {
     fi
 
     for hook in "${OVERLAY_FILES[@]}"; do
-        root="${workdir}/overlay/upper"
-        if ! error="$(mkdir -p -- "${root}/$(dirname "${hook#/usr/}")" 2>&1)"; then
+        dest="${snapshot}${hook}"
+        if ! error="$(mkdir -p -- "${dest%/*}" 2>&1)"; then
             umount "${snapshot}/usr" && umount "${workdir}/overlay" && rmdir "${workdir}/overlay"
             echo "Failed to create directory for hook '${hook}' in chroot: ${error}"
             return 1
         fi
 
-        if ! error="$(cp -- "${hook}" "${root}/${hook#/usr/}" 2>&1)"; then
+        if ! error="$(cp -- "${hook}" "${dest}" 2>&1)"; then
             umount "${snapshot}/usr" && umount "${workdir}/overlay" && rmdir "${workdir}/overlay"
             echo "Failed to copy hook '${hook}' in chroot: ${error}"
             return 1
