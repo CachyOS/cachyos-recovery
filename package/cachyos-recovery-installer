@@ -81,7 +81,7 @@ function generate_cmdline() {
 }
 
 function install_recovery() {
-    local source target esp cmdline
+    local source target esp cmdline tmp
 
     esp="$(bootctl --print-esp-path 2>/dev/null || echo /boot)"
 
@@ -106,6 +106,7 @@ function install_recovery() {
 
         if ! mv -f "${target}.new" "${target}"; then
             echo "Failed to install cachyos-recovery image" >&2
+            rm -f "${target}.new"
             return 1
         fi
     fi
@@ -120,10 +121,30 @@ function install_recovery() {
         return 1
     fi
 
+    if ! tmp="$(mktemp -d -t addon.XXXXXX)"; then
+        echo "Failed to create temp directory: ${tmp}"
+        return 1
+    fi
+
     if ! ukify build \
         --cmdline="${cmdline}" \
-        --output="${target}.extra.d/root.addon.efi"; then
+        --output="${tmp}/root.addon.efi"; then
         echo "Failed to generate command-line addon for CachyOS recovery image" >&2
+        rm -rf "${tmp}"
+        return 1
+    fi
+
+    if ! install -m644 "${tmp}/root.addon.efi" "${target}.extra.d/root.addon.efi.new"; then
+        rm -rf "${tmp}"
+        echo "Failed to copy cachyos-recovery root addon in ESP partition" >&2
+        return 1
+    fi
+
+    rm -rf "${tmp}"
+
+    if ! mv -f "${target}.extra.d/root.addon.efi.new" "${target}.extra.d/root.addon.efi"; then
+        rm -f "${target}.extra.d/root.addon.efi.new"
+        echo "Failed to install cachyos-recovery root addon" >&2
         return 1
     fi
 
