@@ -474,14 +474,14 @@ function move_nested_subvolumes() {
         return 1
     fi
 
-    output="$(echo "$output" | grep -Po ".*path \K([^ ]+)" || true)"
-
     # No nested subvolumes found
     if [[ -z "$output" ]]; then
         return 0
     fi
 
     while IFS= read -r subvol; do
+        [[ "$subvol" == *" path "* ]] || continue
+        subvol="${subvol#* path }"
         subvol="${subvol#*/}"
 
         # Root of nested subvolume must have 2 inode and be empty.
@@ -498,7 +498,7 @@ function move_nested_subvolumes() {
             error "Subvolume already exists: ${new}/${subvol}"
             return 1
         fi
-    done < <(echo "$output")
+    done <<< "$output"
 
     return 0
 }
