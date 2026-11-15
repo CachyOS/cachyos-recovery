@@ -161,6 +161,7 @@ function mount_snapshot() {
         return 1
     fi
 
+    mount --bind /run "$mountpoint"/run || { echo "Failed to bind mount /run"; return 1; }
     mount --bind /tmp "$mountpoint"/tmp || { echo "Failed to bind mount /tmp"; return 1; }
     mount --rbind /dev "$mountpoint"/dev || { echo "Failed to bind mount /dev"; return 1; }
     mount --make-rslave "$mountpoint"/dev || { echo "Failed to make rslave /dev"; return 1; }
