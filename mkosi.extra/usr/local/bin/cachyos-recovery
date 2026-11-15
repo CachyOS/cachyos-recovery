@@ -528,7 +528,7 @@ function cleanup_boot_orphans() {
         [[ "${filename}" != cachyos-recovery.efi ]] || continue
 
         case "${filename}" in
-            vmlinuz-*) # vmlinux files
+            vmlinuz-*|vmlinuz) # vmlinux files
                 kernel="${filename#vmlinuz-}"
                 salt="$(md5sum -- "${file}")"
                 salt="${salt%% *}"
@@ -537,7 +537,7 @@ function cleanup_boot_orphans() {
                     rm -f "${file}"
                 fi
                 ;;
-            initramfs-*.img|*.efi) # intiramfs
+            initramfs-*.img|initramfs|*.efi) # intiramfs
                 if ! output="$(lsinitcpio "$file" 2>/dev/null)"; then
                     continue
                 fi
@@ -558,7 +558,9 @@ function cleanup_boot_orphans() {
         esac
     done < <(LC_ALL=C.UTF-8 find "${root}/boot" -type f \
         \( -name 'vmlinuz-*' \
+        -o -name 'vmlinuz' \
         -o -name 'initramfs-*.img' \
+        -o -name 'initramfs' \
         -o -iname '*.efi' \)
     )
 
