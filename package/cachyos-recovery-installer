@@ -149,7 +149,7 @@ function install_recovery() {
     fi
 
     # Add boot entry in Limine if it's used
-    if command -v limine-entry-tool 2>/dev/null && [[ -e "${esp}/EFI/limine/limine_x64.efi" ]]; then
+    if command -v limine-entry-tool &>/dev/null && [[ -e "${esp}/EFI/limine/limine_x64.efi" ]]; then
         if ! limine-entry-tool --add-efi "CachyOS Recovery" "${target}" --overwrite --quiet; then
             echo "Failed to add boot entry in Limine, please do this manually" >&2
         fi
