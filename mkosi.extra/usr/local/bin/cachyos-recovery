@@ -554,7 +554,19 @@ function cleanup_boot_orphans() {
                 [[ -n "${kver}" ]] || continue
                 [[ -z "${versions[$kver]:-}" ]] || continue
                 step "${filename} is no longer associated with package, so it will be removed"
-                rm -f -- "${file}"
+
+                if [[ -e "${root}/boot/EFI/limine/limine_x64.efi" \
+                    && -x "${root}/usr/bin/limine-entry-tool" \
+                    && "$filename" == "initramfs" ]]
+                then
+                    kernel="${file%/*}"
+                    kernel="${kernel##*/}"
+                    if ! chroot "${root}" limine-entry-tool --remove-all "$kernel"; then
+                        error "Failed to remove Limine boot entry, this is non-critical, but you will not be able to boot in ${kver}"
+                    fi
+                else
+                    rm -f -- "${file}"
+                fi
                 ;;
         esac
     done < <(LC_ALL=C.UTF-8 find "${root}/boot" -type f \
@@ -690,9 +702,16 @@ function copy_boot_files() {
         dest="${target}/${file}"
 
         if is_whiteout "$src"; then
-            if ! rm -f -- "$dest"; then
-                status=1
-                break
+            if [[ -d "$dest" ]]; then
+                if ! rm -rf -- "$dest"; then
+                    status=1
+                    break
+                fi
+            else
+                if ! rm -f -- "$dest"; then
+                    status=1
+                    break
+                fi
             fi
             continue
         fi
