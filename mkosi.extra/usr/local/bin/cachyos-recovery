@@ -721,7 +721,7 @@ function copy_boot_files() {
         else
             sync "$dest"
         fi
-    done < <(LC_ALL=C.UTF-8 find "${upper}" -mindepth 1 -printf "%P\0")
+    done < <(LC_ALL=C.UTF-8 find "${upper}" -mindepth 1 ! -type d -printf "%P\0")
 
     return 0
 }
