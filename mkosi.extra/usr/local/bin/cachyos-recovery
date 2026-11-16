@@ -692,16 +692,15 @@ function is_whiteout() {
 
 function copy_boot_files() {
     local upper="${1}"
-    local lower="${2}"
-    local target="${3}"
-    local -i status=0
+    local src_dir="${2}"
+    local dest_dir="${3}"
     local src dest
 
     while IFS= read -rd '' file; do
-        src="${upper}/${file}"
-        dest="${target}/${file}"
+        src="${src_dir}/${file}"
+        dest="${dest_dir}/${file}"
 
-        if is_whiteout "$src"; then
+        if is_whiteout "$src" || [[ ! -e "$src" ]]; then
             if [[ -d "$dest" ]]; then
                 rm -rf -- "$dest" || error "Failed to remove ${file}"
             else
@@ -711,44 +710,17 @@ function copy_boot_files() {
         fi
 
         if ! mkdir -p -- "$(dirname -- "$dest")"; then
-            error "Failed to create parent directory for ${file}"
-            status=1
-            break
+            error "Failed to create parent directory for ${dest}"
+            return 1
         fi
 
         if ! cp -a -T -- "$src" "$dest"; then
-            error "Failed to copy ${file} file to ${target}"
-            status=1
-            break
+            error "Failed to copy ${src} file to ${dest}"
+            return 1
         else
             sync "$dest"
         fi
-    done < <(LC_ALL=C.UTF-8 find "${upper}" -mindepth 1 ! -type d -printf "%P\0")
-
-    # Revert changes back from lowerdir of overlay, which is copy of real boot
-    if ((status)); then
-        error "Applying of changes to /boot failed, trying to revert..."
-        while IFS= read -rd '' file; do
-            src="${lower}/${file}"
-            dest="${target}/${file}"
-
-            # Remove files that don't exist in original boot directory
-            if [[ ! -e "$src" ]]; then
-                if [[ -d "$dest" ]]; then
-                    rm -rf "$dest"
-                else
-                    rm -f "$dest"
-                fi
-            else
-                if ! cp -a -T -- "$src" "$dest"; then
-                    error "Failed to return original of ${file} to ESP ${target}"
-                else
-                    sync "$dest"
-                fi
-            fi
-        done < <(LC_ALL=C.UTF-8 find "${upper}" -mindepth 1 -printf "%P\0")
-        return 1
-    fi
+    done < <(LC_ALL=C.UTF-8 find "${upper}" -mindepth 1 -printf "%P\0")
 
     return 0
 }
@@ -964,7 +936,15 @@ function rollback_btrfs_snapshot() {
     # Stage 5: Move staged files to real /boot
     if [[ "$esp" == "/boot" ]]; then
         step "Copying new /boot files to ESP partition..."
-        if ! copy_boot_files "${boot}/overlay/upper" "${boot}/content" "${tmp}/snapshot/boot"; then
+        if ! copy_boot_files "${boot}/overlay/upper" "${boot}/overlay/upper" "${tmp}/snapshot/boot"; then
+
+            # Revert changes back from lowerdir of overlay, which is copy of real boot
+            if ! copy_boot_files "${boot}/overlay/upper" "${boot}/content" "${tmp}/snapshot/boot"; then
+                error "Snapshot is restored, but your /boot is incosistient, so you have to fix it manually"
+                completed=1
+                return 0
+            fi
+
             error "Failed to copy staged boot files in ESP partition, returning old root..."
             return 1
         fi
