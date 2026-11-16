@@ -80,10 +80,82 @@ function generate_cmdline() {
     echo "${options}"
 }
 
+function create_boot_entry() {
+    local path="${1}"
+    local esp="${2}"
+    local device disk partition order
+
+    if ! command -v efibootmgr &>/dev/null; then
+        echo "efibootmgr not found, skipping creating EFI entry..."
+        return 0
+    fi
+
+    # Skip if entry already exists
+    if efibootmgr | grep -Fqi "/${path}"; then
+        return 0
+    fi
+
+    if ! device="$(findmnt -vno SOURCE "${esp}")"; then
+        echo "Failed to detect ESP partition device" >&2
+        return 1
+    fi
+
+    device="${device#/dev/}"
+
+    if ! disk="$(readlink -f "/sys/class/block/${device}" 2>/dev/null)"; then
+        echo "Failed to detect ESP disk device" >&2
+        return 1
+    fi
+
+    disk="${disk%/*}"
+    disk="${disk##*/}"
+
+    if ! partition="$(cat "/sys/class/block/${device}/partition" 2>/dev/null)"; then
+        echo "Failed to detect ESP partition number" >&2
+        return 1
+    fi
+
+    if ! efibootmgr --create-only \
+        --disk "/dev/${disk}" \
+        --part "${partition}" \
+        --loader "${path}" \
+        --label 'CachyOS Recovery' \
+        --unicode 1>/dev/null; then
+        echo "Failed to execute efibootmgr" >&2
+        return 1
+    fi
+
+    if ! order="$(efibootmgr 2>/dev/null | grep -Po "^BootOrder:\s+\K(.*)" || false)"; then
+        echo "Failed to detect boot EFI order" >&2
+        return 1
+    fi
+
+    path="${path//\\/\\\\}"
+    if ! entry="$(efibootmgr 2>/dev/null | grep -Po "^Boot\K([0-9]+)(?=\*\s+.*${path}\$)")"; then
+        echo "Failed to detect boot EFI order" >&2
+        return 1
+    fi
+
+    if ! [[ "$entry" =~ [0-9]+ ]]; then
+        echo "Failed to grep entry boot num" >&2
+        return 1
+    fi
+
+    if ! efibootmgr -o "${order},${entry}" 1>/dev/null; then
+        echo "Failed to append entry in boot order" >&2
+        return 1
+    fi
+
+    return 0
+}
+
 function install_recovery() {
     local source target esp cmdline tmp
 
-    esp="$(bootctl --print-esp-path 2>/dev/null || echo /boot)"
+    if ! esp="$(bootctl --print-esp-path 2>/dev/null)"; then
+        echo "Failed to detect ESP partition, make sure it is mounted"
+        return 1
+    fi
 
     source="/usr/lib/cachyos-recovery/cachyos-recovery.efi"
     target="${esp}/EFI/Linux/cachyos-recovery.efi"
@@ -153,6 +225,13 @@ function install_recovery() {
         if ! limine-entry-tool --add-efi "CachyOS Recovery" "${target}" --overwrite --quiet; then
             echo "Failed to add boot entry in Limine, please do this manually" >&2
         fi
+    fi
+
+    target="${target#"${esp}"}"
+    target="${target//\//\\}"
+
+    if ! create_boot_entry "${target}" "${esp}"; then
+        echo "Failed to create EFI boot entry" >&2
     fi
 
     return 0
