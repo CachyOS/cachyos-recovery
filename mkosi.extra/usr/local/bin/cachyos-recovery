@@ -720,6 +720,8 @@ function copy_boot_files() {
             error "Failed to copy ${file} file to ${target}"
             status=1
             break
+        else
+            sync "$dest"
         fi
     done < <(LC_ALL=C.UTF-8 find "${upper}" -mindepth 1 ! -type d -printf "%P\0")
 
