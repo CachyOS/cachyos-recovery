@@ -741,6 +741,12 @@ function copy_boot_files() {
 }
 
 function rollback_btrfs_snapshot_wrapper() {
+    local -a opts=(
+        "${FZF_COMMON_OPTIONS[@]}"
+        --header="Snapshot rollback completed. Do you want reboot?"
+        --read0
+    )
+
     msg "Rolling back of Btrfs snapshot"
 
     if ! snapshot="$(select_btrfs_snapshot "Select Btrfs snapshot to rollback")"; then
@@ -751,6 +757,14 @@ function rollback_btrfs_snapshot_wrapper() {
         error "Failed to rollback Btrfs snapshot. Press enter to return in main menu."
         read -r _
         return 1
+    fi
+
+    if ! answer="$(printf '%s\0' "No, go back" "Yes, reboot" | fzf "${opts[@]}")"; then
+        return 0
+    fi
+
+    if [[ "$answer" == "Yes, reboot" ]]; then
+        system_reboot
     fi
 
     return 0
