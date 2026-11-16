@@ -65,6 +65,20 @@ declare -a OVERLAY_FILES=(
 
 ## Functions
 
+function ask_yes_no(){
+    local question="${1}"
+    local answer=""
+
+    while ! printf '%s' "${answer}" | grep -q '^\([Yy]\(es\)\?\|[Nn]\(o\)\?\)$'; do
+        printf '%s' "${question} [Y]es/[N]o: "
+        read -r answer
+    done
+
+    if printf '%s' "${answer}" | grep -q '^[Nn]\(o\)\?$'; then
+        return 1
+    fi
+}
+
 function msg() {
     local mesg="$1"; shift
     # shellcheck disable=SC2059
@@ -790,6 +804,10 @@ function rollback_btrfs_snapshot() {
     if ! [[ "$snapshot" =~ ^[0-9]+$ ]]; then
         error "You have not specified correct ID and not booted in snapshot"
         return 1
+    fi
+
+    if ! ask_yes_no "Are you really want to restore this snapshot?"; then
+        return 0
     fi
 
     msg "Starting snapshot rollback..."
