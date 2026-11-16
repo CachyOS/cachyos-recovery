@@ -72,6 +72,14 @@ mount_overlayfs() {
         return 1
     fi
 
+    if ! mkdir -p "${upper_dir}/upper/etc/systemd/system"; then
+        logger -t "$0" -p err "Failed to create systemd override directory"
+    else
+        if ! ln -sf /dev/null "${upper_dir}/upper/etc/systemd/system/systemd-remount-fs.service"; then
+            logger -t "$0" -p err "Failed to create systemd override symlink"
+        fi
+    fi
+
     if ! cp /usr/local/bin/cachyos-recovery-notifier \
         "${upper_dir}/upper/usr/local/bin/cachyos-recovery-notifier"; then
         logger -t "$0" -p err "Failed to copy rollback notifier"
