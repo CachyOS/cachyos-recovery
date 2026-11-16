@@ -386,6 +386,7 @@ function select_btrfs_snapshot() {
         --delimiter='\t'
         --exact
         --header="${header}"
+        --preview-window='wrap'
         --with-shell='/usr/bin/bash -c'
         --preview="$(cat <<'EOF'
 subvol_id={1} date={2} path={3}
