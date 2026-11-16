@@ -703,15 +703,9 @@ function copy_boot_files() {
 
         if is_whiteout "$src"; then
             if [[ -d "$dest" ]]; then
-                if ! rm -rf -- "$dest"; then
-                    status=1
-                    break
-                fi
+                rm -rf -- "$dest" || error "Failed to remove ${file}"
             else
-                if ! rm -f -- "$dest"; then
-                    status=1
-                    break
-                fi
+                rm -f -- "$dest" || error "Failed to remove ${file}"
             fi
             continue
         fi
