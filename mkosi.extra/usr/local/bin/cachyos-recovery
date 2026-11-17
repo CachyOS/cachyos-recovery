@@ -519,14 +519,14 @@ function move_nested_subvolumes() {
     return 0
 }
 
-# Remove orphans files in overlay to generate bootloader config wihtout them
-function cleanup_boot_orphans() {
+function cleanup_boot() {
     local root="${1}"
     local kernels="${2}"
     local kernel kver file filename vmlinux output salt
     local -A versions=()
     local -A names=()
     local -A salts=()
+    local -i signing_needed=0
 
     while read -r kver; do
         kernel="$(cat "${root}/usr/lib/modules/${kver}/pkgbase")"
@@ -536,6 +536,10 @@ function cleanup_boot_orphans() {
         names["$kernel"]="true"
         versions["$kver"]="true"
     done <<< "$kernels"
+
+    if is_signing_needed "${root}"; then
+        signing_needed=1
+    fi
 
     while read -r file; do
         [[ -s "${file}" ]] || continue
@@ -551,6 +555,12 @@ function cleanup_boot_orphans() {
                 if [[ -z "${names[$kernel]:-}" && -z "${salts[$salt]:-}" ]]; then
                     step "${filename} is no longer associated with package, so it will be removed"
                     rm -f "${file}"
+                else
+                    if ((signing_needed)); then
+                        if ! chroot "${root}" sbctl sign -s "${file}"; then
+                            error "Failed to sign file ${file}"
+                        fi
+                    fi
                 fi
                 ;;
             initramfs-*.img|initramfs|*.efi) # intiramfs
@@ -567,7 +577,16 @@ function cleanup_boot_orphans() {
                 done <<< "$output"
 
                 [[ -n "${kver}" ]] || continue
-                [[ -z "${versions[$kver]:-}" ]] || continue
+
+                if [[ -n "${versions[$kver]:-}" ]]; then
+                    if ((signing_needed)); then
+                        if ! chroot "${root}" sbctl sign -s "${file}"; then
+                            error "Failed to sign file ${file}"
+                        fi
+                    fi
+                    continue
+                fi
+
                 step "${filename} is no longer associated with package, so it will be removed"
 
                 if [[ -e "${root}/boot/EFI/limine/limine_x64.efi" \
@@ -591,6 +610,56 @@ function cleanup_boot_orphans() {
         -o -name 'initramfs' \
         -o -iname '*.efi' \)
     )
+
+    return 0
+}
+
+function is_signing_needed() {
+    local chroot="${1}"
+    local -i keys=0
+    local status section
+
+    if [[ ! -x "${chroot}/usr/bin/sbctl" ]]; then
+        info "sbctl is not installed, skipping signing..."
+        return 1
+    fi
+
+    if ! status="$(chroot "$chroot" sbctl status --json)"; then
+        return 1
+    fi
+
+    if ! [[ "$status" =~ \"installed\"[[:space:]]*:[[:space:]]*true ]]; then
+        info "sbctl is not installed, skipping signing..."
+        return 1
+    fi
+
+    if ! [[ "$status" =~ \"secure_boot\"[[:space:]]*:[[:space:]]*true ]]; then
+        info "Secure boot is not enabled, skipping signing..."
+        return 1
+    fi
+
+    if ! [[ "$status" =~ \"setup_mode\"[[:space:]]*:[[:space:]]*false ]]; then
+        info "Setup mode is enrolled, skipping signing..."
+        return 1
+    fi
+
+    while IFS= read -r line; do
+        case "$line" in
+            PK:|KEK:|DB:) section="${line%:}";;
+            ' '*|$'\t'*)
+                if [[ -n "$section" ]]; then
+                    ((keys++))
+                    section=
+                fi
+                ;;
+            *) ;;
+        esac
+    done < <(chroot "${chroot}" sbctl list-enrolled-keys || true)
+
+    if ((keys != 3)); then
+        info "No keys enrolled, skipping signing..."
+        return 1
+    fi
 
     return 0
 }
@@ -651,8 +720,8 @@ function regenerate_boot_files() {
         }
     done <<< "$kernels"
 
-    step "Purging orphan entities..."
-    cleanup_boot_orphans "${chroot}" "${kernels}" || true
+    step "Purging orphan entities and signing new images if needed..."
+    cleanup_boot "${chroot}" "${kernels}" || true
 
     if ! regenerate_bootloader_config "${esp}" "${chroot}"; then
         error "Failed to re-generate bootloader configuration, rollback is not possible"
