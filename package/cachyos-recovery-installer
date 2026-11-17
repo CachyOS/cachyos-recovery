@@ -149,6 +149,55 @@ function create_boot_entry() {
     return 0
 }
 
+function is_signing_needed() {
+    local -i keys=0
+    local status section
+
+    if ! command -v sbctl &>/dev/null; then
+        echo "sbctl is not installed, skipping signing..."
+        return 1
+    fi
+
+    if ! status="$(sbctl status --json)"; then
+        return 1
+    fi
+
+    if ! [[ "$status" =~ \"installed\"[[:space:]]*:[[:space:]]*true ]]; then
+        echo "sbctl is not installed, skipping signing..."
+        return 1
+    fi
+
+    if ! [[ "$status" =~ \"secure_boot\"[[:space:]]*:[[:space:]]*true ]]; then
+        echo "Secure boot is not enabled, skipping signing..."
+        return 1
+    fi
+
+    if ! [[ "$status" =~ \"setup_mode\"[[:space:]]*:[[:space:]]*false ]]; then
+        echo "Setup mode is enrolled, skipping signing..."
+        return 1
+    fi
+
+    while IFS= read -r line; do
+        case "$line" in
+            PK:|KEK:|DB:) section="${line%:}";;
+            ' '*|$'\t'*)
+                if [[ -n "$section" ]]; then
+                    ((keys++))
+                    section=
+                fi
+                ;;
+            *) ;;
+        esac
+    done < <(sbctl list-enrolled-keys || true)
+
+    if ((keys != 3)); then
+        echo "No keys enrolled, skipping signing..."
+        return 1
+    fi
+
+    return 0
+}
+
 function install_recovery() {
     local source target esp cmdline tmp
 
@@ -180,6 +229,12 @@ function install_recovery() {
             echo "Failed to install cachyos-recovery image" >&2
             rm -f "${target}.new"
             return 1
+        fi
+
+        if is_signing_needed; then
+            if ! sbctl sign "${target}"; then
+                echo "Failed to sign ${target}, UEFI Secure Boot may not accept it" >&2
+            fi
         fi
     fi
 
@@ -218,6 +273,12 @@ function install_recovery() {
         rm -f "${target}.extra.d/root.addon.efi.new"
         echo "Failed to install cachyos-recovery root addon" >&2
         return 1
+    fi
+
+    if is_signing_needed; then
+        if ! sbctl sign "${target}.extra.d/root.addon.efi.new"; then
+            echo "Failed to sign root addon, UEFI Secure Boot may not accept it" >&2
+        fi
     fi
 
     # Add boot entry in Limine if it's used
