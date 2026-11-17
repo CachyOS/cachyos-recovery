@@ -651,6 +651,7 @@ function regenerate_boot_files() {
         }
     done <<< "$kernels"
 
+    step "Purging orphan entities..."
     cleanup_boot_orphans "${chroot}" "${kernels}" || true
 
     if ! regenerate_bootloader_config "${esp}" "${chroot}"; then
@@ -982,8 +983,6 @@ function rollback_btrfs_snapshot() {
             return 1
         fi
 
-        step "Purging orphan entities..."
-        cleanup_boot_orphans "${tmp}/snapshot" "${kernels}" || true
     fi
 
     # Remove pacman lock from snapshot after restoring
