@@ -305,7 +305,7 @@ function install_recovery() {
     fi
 
     if is_signing_needed; then
-        if ! sbctl sign "${target}.extra.d/root.addon.efi.new"; then
+        if ! sbctl sign "${target}.extra.d/root.addon.efi"; then
             echo "Failed to sign root addon, UEFI Secure Boot may not accept it" >&2
         fi
     fi
