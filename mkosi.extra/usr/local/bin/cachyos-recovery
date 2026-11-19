@@ -557,7 +557,7 @@ function cleanup_boot() {
                     rm -f "${file}"
                 else
                     if ((signing_needed)); then
-                        if ! chroot "${root}" sbctl sign -s "${file}"; then
+                        if ! chroot "${root}" sbctl sign "${file#"${root}"}"; then
                             error "Failed to sign file ${file}"
                         fi
                     fi
@@ -580,7 +580,7 @@ function cleanup_boot() {
 
                 if [[ -n "${versions[$kver]:-}" ]]; then
                     if ((signing_needed)); then
-                        if ! chroot "${root}" sbctl sign -s "${file}"; then
+                        if ! chroot "${root}" sbctl sign "${file#"${root}"}"; then
                             error "Failed to sign file ${file}"
                         fi
                     fi
