@@ -108,10 +108,6 @@ function mount_sysroot() {
     return 0
 }
 
-function start_shell() {
-    exec /usr/bin/bash -i
-}
-
 function bootstrap() {
     if ! mkdir -p /sysroot /tmp /dev/pts; then
         echo "Failed to create temporary directories" >&2
@@ -139,8 +135,7 @@ function bootstrap() {
         --font-size=20 \
         --term=xterm-256color \
         --login \
-        --oneshot -- /usr/local/bin/cachyos-recovery start || true
-    start_shell
+        --oneshot -- /usr/local/bin/cachyos-recovery start
 }
 
 bootstrap "$@"
