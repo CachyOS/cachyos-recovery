@@ -564,7 +564,7 @@ function cleanup_boot() {
                 fi
                 ;;
             initramfs-*.img|initramfs|*.efi) # intiramfs
-                if ! output="$(lsinitcpio "$file" 2>/dev/null)"; then
+                if ! output="$(chroot "${root}" lsinitcpio "${file#"${root}"}" 2>/dev/null)"; then
                     continue
                 fi
 
