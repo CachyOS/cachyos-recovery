@@ -693,11 +693,6 @@ function regenerate_boot_files() {
         return 1
     fi
 
-    # Don't regenerate anything if we already have real copy of old boot
-    if [[ -d "${tmp}/snapshot/.boot"  && ! -e "${tmp}/snapshot/.cachyos-recovery.lock" ]]; then
-        return 0
-    fi
-
     if ! mount_overlay "${boot}/content" "${boot}/overlay" "${chroot}/boot"; then
         error "Failed to create overlay mount for /boot"
         return 1
@@ -781,14 +776,23 @@ function is_whiteout() {
 }
 
 function copy_boot_files() {
-    local src_dir="${1}"
-    local dest_dir="${2}"
+    local upper="${1}"
+    local src_dir="${2}"
+    local dest_dir="${3}"
     local src dest
 
-    # First copy new files from src
     while IFS= read -rd '' file; do
         src="${src_dir}/${file}"
         dest="${dest_dir}/${file}"
+
+        if is_whiteout "$src" || [[ ! -e "$src" ]]; then
+            if [[ -d "$dest" ]]; then
+                rm -rf -- "$dest" || error "Failed to remove ${file}"
+            else
+                rm -f -- "$dest" || error "Failed to remove ${file}"
+            fi
+            continue
+        fi
 
         if ! mkdir -p -- "$(dirname -- "$dest")"; then
             error "Failed to create parent directory for ${dest}"
@@ -801,21 +805,7 @@ function copy_boot_files() {
         else
             sync "$dest"
         fi
-    done < <(LC_ALL=C.UTF-8 find "${src_dir}" -mindepth 1 -type f -printf "%P\0")
-
-    # Then remove non-exist files in src from dest
-    while IFS= read -rd '' file; do
-        src="${src_dir}/${file}"
-        dest="${dest_dir}/${file}"
-
-        if is_whiteout "$src" || [[ ! -e "$src" && "${src_dir}" != */upper ]]; then
-            if [[ -d "$dest" ]]; then
-                rm -rf -- "$dest" || error "Failed to remove ${file}"
-            else
-                rm -f -- "$dest" || error "Failed to remove ${file}"
-            fi
-        fi
-    done < <(LC_ALL=C.UTF-8 find "${dest_dir}" -mindepth 1 -printf "%P\0")
+    done < <(LC_ALL=C.UTF-8 find "${upper}" -mindepth 1 ! -type d -printf "%P\0")
 
     return 0
 }
@@ -881,8 +871,7 @@ function rollback_btrfs_snapshot() {
         oldroot \
         rollback \
         boot \
-        kernels \
-        src_dir
+        kernels
     local -i completed=0
     local snapshot="${1:-}"
     local root="${2:-"/"}"
@@ -1049,17 +1038,11 @@ function rollback_btrfs_snapshot() {
 
     # Stage 5: Move staged files to real /boot
     if [[ "$esp" == "/boot" ]]; then
-        if [[ -d "${tmp}/snapshot/.boot" && ! -e "${tmp}/snapshot/.cachyos-recovery.lock" ]]; then
-            src_dir="${tmp}/snapshot/.boot"
-        else
-            src_dir="${boot}/overlay/upper"
-        fi
-
         step "Copying new /boot files to ESP partition..."
-        if ! copy_boot_files "${src_dir}" "${tmp}/snapshot/boot"; then
+        if ! copy_boot_files "${boot}/overlay/upper" "${boot}/overlay/upper" "${tmp}/snapshot/boot"; then
 
             # Revert changes back from lowerdir of overlay, which is copy of real boot
-            if ! copy_boot_files "${boot}/content" "${tmp}/snapshot/boot"; then
+            if ! copy_boot_files "${boot}/overlay/upper" "${boot}/content" "${tmp}/snapshot/boot"; then
                 error "Snapshot is restored, but your /boot is incosistient, so you have to fix it manually"
                 completed=1
                 return 0
@@ -1068,6 +1051,7 @@ function rollback_btrfs_snapshot() {
             error "Failed to copy staged boot files in ESP partition, returning old root..."
             return 1
         fi
+
     fi
 
     # Remove pacman lock from snapshot after restoring
