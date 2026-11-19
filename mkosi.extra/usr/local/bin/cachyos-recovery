@@ -26,8 +26,6 @@ declare -r BTRFS_ROLLBACK_SNAPSHOT_LABEL=$'Rollback Btrfs snapshot'
 declare -r BTRFS_ROLLBACK_SNAPSHOT_DESC=$'Restore the system from the selected Btrfs snapshot.\nSuitable if you know exactly which snapshot works or if snapshot cannot be loaded due to kexec.'
 declare -r SYSTEM_REBOOT_LABEL=$'Reboot'
 declare -r SYSTEM_REBOOT_DESC=$'Reboot the system'
-declare -r EXIT_LABEL=$'Exit'
-declare -r EXIT_DESC=$'Exit from cachyos-recovery to emergency shell'
 declare -r RECOVERY_HEADER=$'Welcome to the CachyOS recovery menu!\nIf you are here, your system is probably broken, right? :(\nHow I can help you?'
 
 ## Colors
@@ -1075,10 +1073,6 @@ function system_reboot() {
     systemctl reboot
 }
 
-function script_exit() {
-    exit 0
-}
-
 function start() {
     local -A actions=()
     local -A descriptions=()
@@ -1114,11 +1108,6 @@ function start() {
     actions["$action"]="system_reboot"
     descriptions["$action"]="$SYSTEM_REBOOT_DESC"
 
-    # Exit
-    action="$((count++)). $EXIT_LABEL"
-    actions["$action"]="script_exit"
-    descriptions["$action"]="$EXIT_DESC"
-
     # Create previews with descriptions
     preview_dir="$(mktemp -d -t preview.XXXXXX)"
 
@@ -1134,7 +1123,7 @@ function start() {
             | sort -t '.' -n -k 1 -z \
             | FZF_PREVIEW_DIR="${preview_dir}" fzf "${opts[@]}"
         )"; then
-            break
+            continue
         fi
 
         msg "Selected: ${action}"
