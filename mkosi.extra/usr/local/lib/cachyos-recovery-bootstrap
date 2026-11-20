@@ -36,6 +36,7 @@ function parse_root() {
 function unlock_luks() {
     local device="${1}"
     local name="${2}"
+    local -i unlocked=0
 
     if [[ -z "${device:-}" || ! -b "${device:-}" ]]; then
         echo "Failed to find LUKS device" >&2
@@ -47,8 +48,18 @@ function unlock_luks() {
         return 1
     fi
 
-    if ! cryptsetup open "$device" "$name"; then
-        echo "Failed to unlock LUKS device" >&2
+
+    for ((i=0; i < 5; i++)); do
+        if ! cryptsetup open "$device" "$name" < /dev/tty1; then
+            echo "Failed to unlock LUKS device, wrong password?" >&2
+            sleep 1
+        else
+            unlocked=1
+            break
+        fi
+    done
+
+    if ! ((unlocked)); then
         return 1
     fi
 
