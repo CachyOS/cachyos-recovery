@@ -1,25 +1,44 @@
 # Maintainer: Vasiliy Stelmachenok <ventureo@cachyos.org>
-pkgname=cachyos-recovery
-pkgver=1.0
+pkgbase=cachyos-recovery
+pkgname=('cachyos-recovery' 'cachyos-recovery-legacy')
+pkgver=2026.11.15
 pkgrel=1
-pkgdesc="CachyOS recovery image"
 url="https://github.com/CachyOS/cachyos-recovery"
 license=(GPL-3.0-or-later)
 arch=('any')
-depends=('systemd-ukify')
 source=(
     cachyos-recovery.efi
+    cachyos-recovery.initrd
+    cachyos-recovery.vmlinuz
     cachyos-recovery-installer
     95-recovery-install.hook
 )
 sha256sums=(
-    'SKIP'
-    'SKIP'
-    'SKIP'
+    'dc0e3ef341422594871d17a1182602b24426cbc4f6cfde655804d50850e6b509'
+    '1e2e5d9e0a86f1ae5d2b12f3361ac7200031787ff967ab742e32514102099e16'
+    'b9a79d6f1d0f1f625a257fb78e305dd9ee19ea9a6315ba06489204e004e0b4c3'
+    '56f412b6c8f29bbd1a743eb42564a4f35c7458579a0d5118c4357ebffb662a5b'
+    '5c3d60ef76ccc3604743dd9f4f9ddb859873b869efcedc77d2ed4c3e37e81803'
 )
 
-package() {
+package_cachyos-recovery() {
+    pkgdesc="CachyOS recovery image (UEFI)"
+    depends=('systemd-ukify')
+    provides=('cachyos-recovery')
+    conflicts=('cachyos-recovery-legacy')
+
     install -Dm644 cachyos-recovery.efi "$pkgdir/usr/lib/cachyos-recovery/cachyos-recovery.efi"
-    install -Dm644 95-recovery-install.hook "${pkgdir}/usr/share/libalpm/hooks/95-recovery-install.hook"
-    install -Dm755 cachyos-recovery-installer "${pkgdir}/usr/share/libalpm/scripts/cachyos-recovery-installer"
+    install -Dm755 cachyos-recovery-installer "$pkgdir/usr/share/libalpm/scripts/cachyos-recovery-installer"
+    install -Dm644 95-recovery-install.hook "$pkgdir/usr/share/libalpm/hooks/95-recovery-install.hook"
+}
+
+package_cachyos-recovery-legacy() {
+    pkgdesc="CachyOS recovery image (BIOS)"
+    provides=('cachyos-recovery')
+    conflicts=('cachyos-recovery')
+
+    install -Dm644 cachyos-recovery.initrd "$pkgdir/usr/lib/cachyos-recovery/cachyos-recovery.initrd"
+    install -Dm644 cachyos-recovery.vmlinuz "$pkgdir/usr/lib/cachyos-recovery/cachyos-recovery.vmlinuz"
+    install -Dm755 cachyos-recovery-installer "$pkgdir/usr/share/libalpm/scripts/cachyos-recovery-installer"
+    install -Dm644 95-recovery-install.hook "$pkgdir/usr/share/libalpm/hooks/95-recovery-install.hook"
 }

@@ -3,6 +3,7 @@ Type = Package
 Operation = Install
 Operation = Upgrade
 Target = cachyos-recovery
+Target = cachyos-recovery-legacy
 
 [Action]
 Description = Installing system recovery image...

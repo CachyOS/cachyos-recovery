@@ -453,6 +453,26 @@ function regenerate_bootloader_config() {
     local esp="${1}"
     local chroot="${2}"
 
+    # For BIOS systems
+    if [[ ! -d /sys/firmware/efi/efivars ]]; then
+        if [[ -e "${chroot}/boot/limine-bios.sys" && -x "${chroot}/usr/bin/limine-update" ]]; then
+            chroot "${chroot}" limine-update || {
+                error "Failed to generate Limine config"
+                return 1
+            }
+        elif [[ -e /boot/grub/grub.cfg && -x "${chroot}/usr/bin/grub-mkconfig" ]]; then
+            chroot "${chroot}" grub-mkconfig -o /boot/grub/grub.cfg || {
+                error "Failed to regenerate GRUB config"
+                return 1
+            }
+        else
+            error "Failed to detect bootloader and update its configuration"
+            return 1
+        fi
+
+        return 0
+    fi
+
     if [[ -e "${chroot}/${esp}/EFI/limine/limine_x64.efi" && -x "${chroot}/usr/bin/limine-update" ]]; then
         chroot "${chroot}" limine-update || {
             error "Failed to generate Limine config"
@@ -467,7 +487,7 @@ function regenerate_bootloader_config() {
         info "rEFInd does not require configuration update"
     elif [[ -n "$(compgen -G "${chroot}/${esp}/EFI/*/grubx64.efi")" && -x "${chroot}/usr/bin/grub-mkconfig" ]]; then
         chroot "${chroot}" grub-mkconfig -o /boot/grub/grub.cfg || {
-            error "Failed to generate systemd-boot config"
+            error "Failed to regenerate GRUB config"
             return 1
         }
     else
@@ -972,7 +992,7 @@ function rollback_btrfs_snapshot() {
 
     # We don't support any other ESP locations expect /boot, /efi and /boot/efi
     # in CachyOS.
-    if [[ -z "${esp}" ]]; then
+    if [[ -z "${esp}" && -d /sys/firmware/efi/efivars ]]; then
         error "No ESP partition was found to mount"
         return 1
     fi

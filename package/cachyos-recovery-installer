@@ -227,7 +227,7 @@ function is_signing_needed() {
     return 0
 }
 
-function install_recovery() {
+function install_recovery_efi() {
     local source target esp cmdline tmp
 
     if ! esp="$(bootctl --print-esp-path 2>/dev/null)"; then
@@ -327,7 +327,57 @@ function install_recovery() {
     return 0
 }
 
-# TODO: Add support for BIOS
+function copy_image() {
+    local src="${1}"
+    local dest="${2}"
+
+    if ! install -m644 "${src}" "${dest}.new"; then
+        echo "Failed to copy cachyos-recovery ${src} in ESP partition" >&2
+        return 1
+    fi
+
+    if ! mv -f "${dest}.new" "${dest}"; then
+        echo "Failed to install cachyos-recovery ${src} image" >&2
+        rm -f "${dest}.new"
+        return 1
+    fi
+
+    return 0
+}
+
+function install_recovery_bios() {
+    local initrd vmlinuz
+
+    initrd="/usr/lib/cachyos-recovery/cachyos-recovery.initrd"
+    vmlinuz="/usr/lib/cachyos-recovery/cachyos-recovery.vmlinuz"
+
+    if ! [[ -s "$initrd"  && -s "$vmlinuz" ]]; then
+        echo "Failed to find initrd images" >&2
+        return 1
+    fi
+
+    if command -v limine-entry-tool &>/dev/null && [[ -s "/boot/limine-bios.sys" ]]; then
+        if ! limine-entry-tool --add-kernel "cachyos-recovery" "${vmlinuz}" "${initrd}" \
+            --comment "CachyOS Recovery" --quiet; then
+            echo "Failed to install boot entry in Limine, please do this manually" >&2
+            return 1
+        fi
+    else
+        if ! cmp -s "$vmlinuz" "/boot/${vmlinuz##*/}"; then
+            copy_image "${vmlinuz}" "/boot/${vmlinuz##*/}"
+        fi
+
+        if ! cmp -s "$initrd" "/boot/${initrd##*/}"; then
+            copy_image "${initrd}" "/boot/${initrd##*/}"
+        fi
+    fi
+
+    return 0
+}
+
+
 if [[ -d /sys/firmware/efi/efivars ]]; then
-    install_recovery
+    install_recovery_efi
+else
+    install_recovery_bios
 fi
