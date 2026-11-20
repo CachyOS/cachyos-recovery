@@ -227,6 +227,24 @@ function is_signing_needed() {
     return 0
 }
 
+function copy_image() {
+    local src="${1}"
+    local dest="${2}"
+
+    if ! install -m644 "${src}" "${dest}.new"; then
+        echo "Failed to copy cachyos-recovery ${src} in ESP partition" >&2
+        return 1
+    fi
+
+    if ! mv -f "${dest}.new" "${dest}"; then
+        echo "Failed to install cachyos-recovery ${src} image" >&2
+        rm -f "${dest}.new"
+        return 1
+    fi
+
+    return 0
+}
+
 function install_recovery_efi() {
     local source target esp cmdline tmp
 
@@ -249,14 +267,8 @@ function install_recovery_efi() {
 
     # In case if package was upgraded due to pkgrel increase
     if ! cmp -s "$source" "$target"; then
-        if ! install -m644 "$source" "${target}.new"; then
-            echo "Failed to copy cachyos-recovery image in ESP partition" >&2
-            return 1
-        fi
-
-        if ! mv -f "${target}.new" "${target}"; then
+        if ! copy_image "$source" "$target"; then
             echo "Failed to install cachyos-recovery image" >&2
-            rm -f "${target}.new"
             return 1
         fi
 
@@ -327,24 +339,6 @@ function install_recovery_efi() {
     return 0
 }
 
-function copy_image() {
-    local src="${1}"
-    local dest="${2}"
-
-    if ! install -m644 "${src}" "${dest}.new"; then
-        echo "Failed to copy cachyos-recovery ${src} in ESP partition" >&2
-        return 1
-    fi
-
-    if ! mv -f "${dest}.new" "${dest}"; then
-        echo "Failed to install cachyos-recovery ${src} image" >&2
-        rm -f "${dest}.new"
-        return 1
-    fi
-
-    return 0
-}
-
 function install_recovery_bios() {
     local initrd vmlinuz
 
@@ -364,11 +358,11 @@ function install_recovery_bios() {
         fi
     else
         if ! cmp -s "$vmlinuz" "/boot/${vmlinuz##*/}"; then
-            copy_image "${vmlinuz}" "/boot/${vmlinuz##*/}"
+            copy_image "${vmlinuz}" "/boot/${vmlinuz##*/}" || false
         fi
 
         if ! cmp -s "$initrd" "/boot/${initrd##*/}"; then
-            copy_image "${initrd}" "/boot/${initrd##*/}"
+            copy_image "${initrd}" "/boot/${initrd##*/}" || false
         fi
     fi
 
