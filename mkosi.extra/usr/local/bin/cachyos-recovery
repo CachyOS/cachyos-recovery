@@ -1007,7 +1007,7 @@ function rollback_btrfs_snapshot() {
         return 1
     fi
 
-    if ! chroot "${tmp}/snapshot" mount "$esp"; then
+    if [[ -n "$esp" ]] && ! chroot "${tmp}/snapshot" mount "$esp"; then
         error "Failed to mount ${esp} partition"
         return 1
     fi
