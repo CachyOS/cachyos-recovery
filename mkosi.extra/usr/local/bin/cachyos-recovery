@@ -229,15 +229,22 @@ function generate_temporary_initramfs() {
         echo 'build { :; }' > "${snapshot}/usr/lib/initcpio/install/btrfs-overlayfs"
     fi
 
-    if ! error="$(chroot "${snapshot}" mkinitcpio \
+    chroot "${snapshot}" mkinitcpio \
         -g "${workdir}/initramfs" \
         -k "$kver" \
-        -A overlayfs 2>&1
-    )"; then
-        umount "${snapshot}/usr" && umount "${workdir}/overlay" && rmdir "${workdir}/overlay"
-        echo "$error"
+        -A overlayfs &>/run/mkinitcpio.log || true
+
+    if [[ ! -s "${workdir}/initramfs" ]] \
+        || ! chroot "${snapshot}" lsinitcpio "${workdir}/initramfs" &>/dev/null; then
+        if umount "${snapshot}/usr"; then
+            umount "${workdir}/overlay" && rmdir "${workdir}/overlay"
+        fi
+        cat /run/mkinitcpio.log 2>/dev/null || echo "Unknown error"
+        rm -f /run/mkinitcpio.log
         return 1
     fi
+
+    rm -f /run/mkinitcpio.log
 
     if ! umount "${snapshot}/usr"; then
         echo "Failed to unmount /usr overlay" >&2
