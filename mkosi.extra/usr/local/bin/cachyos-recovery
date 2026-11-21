@@ -218,6 +218,17 @@ function generate_temporary_initramfs() {
         fi
     done
 
+    # Override limine-snapper-sync hook to avoid conflict and race conditions
+    if [[ -e "${snapshot}/usr/lib/initcpio/install/sd-btrfs-overlayfs" ]]; then
+        rm "${snapshot}/usr/lib/initcpio/install/sd-btrfs-overlayfs"
+        echo 'build { :; }' > "${snapshot}/usr/lib/initcpio/install/sd-btrfs-overlayfs"
+    fi
+
+    if [[ -e "${snapshot}/usr/lib/initcpio/install/btrfs-overlayfs" ]]; then
+        rm "${snapshot}/usr/lib/initcpio/install/btrfs-overlayfs"
+        echo 'build { :; }' > "${snapshot}/usr/lib/initcpio/install/btrfs-overlayfs"
+    fi
+
     if ! error="$(chroot "${snapshot}" mkinitcpio \
         -g "${workdir}/initramfs" \
         -k "$kver" \
