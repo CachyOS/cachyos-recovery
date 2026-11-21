@@ -1,23 +1,23 @@
 # Maintainer: Vasiliy Stelmachenok <ventureo@cachyos.org>
 pkgbase=cachyos-recovery
 pkgname=('cachyos-recovery' 'cachyos-recovery-legacy')
-pkgver=2026.11.15
+pkgver=2026.11.21
 pkgrel=1
 url="https://github.com/CachyOS/cachyos-recovery"
 license=(GPL-3.0-or-later)
 arch=('any')
 source=(
-    cachyos-recovery.efi
-    cachyos-recovery.initrd
-    cachyos-recovery.vmlinuz
+    "cachyos-recovery.efi::https://github.com/CachyOS/cachyos-recovery/releases/download/${pkgver}/cachyos-recovery_${pkgver}.efi"
+    "cachyos-recovery.initrd::https://github.com/CachyOS/cachyos-recovery/releases/download/${pkgver}/cachyos-recovery_${pkgver}.initrd"
+    "cachyos-recovery.vmlinuz::https://github.com/CachyOS/cachyos-recovery/releases/download/${pkgver}/cachyos-recovery_${pkgver}.vmlinuz"
     cachyos-recovery-installer
     95-recovery-install.hook
 )
 sha256sums=(
-    'dc0e3ef341422594871d17a1182602b24426cbc4f6cfde655804d50850e6b509'
-    '1e2e5d9e0a86f1ae5d2b12f3361ac7200031787ff967ab742e32514102099e16'
+    '20a38f4c9546b5e87a9a174838137da7a468812b7c502dfb85e112d91aad0cfa'
+    'd48a1d0c321f0d1e447187040d029bc3dcbc8f4791398c6c7ed9729e3ea10aa5'
     'b9a79d6f1d0f1f625a257fb78e305dd9ee19ea9a6315ba06489204e004e0b4c3'
-    '56f412b6c8f29bbd1a743eb42564a4f35c7458579a0d5118c4357ebffb662a5b'
+    '6bcbb70f85930bddbfd7f0af72c46471243a3267331ce532d4b1232be227231d'
     '5c3d60ef76ccc3604743dd9f4f9ddb859873b869efcedc77d2ed4c3e37e81803'
 )
 

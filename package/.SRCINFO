@@ -1,0 +1,27 @@
+pkgbase = cachyos-recovery
+	pkgver = 2026.11.21
+	pkgrel = 1
+	url = https://github.com/CachyOS/cachyos-recovery
+	arch = any
+	license = GPL-3.0-or-later
+	source = cachyos-recovery.efi::https://github.com/CachyOS/cachyos-recovery/releases/download/2026.11.21/cachyos-recovery_2026.11.21.efi
+	source = cachyos-recovery.initrd::https://github.com/CachyOS/cachyos-recovery/releases/download/2026.11.21/cachyos-recovery_2026.11.21.initrd
+	source = cachyos-recovery.vmlinuz::https://github.com/CachyOS/cachyos-recovery/releases/download/2026.11.21/cachyos-recovery_2026.11.21.vmlinuz
+	source = cachyos-recovery-installer
+	source = 95-recovery-install.hook
+	sha256sums = 20a38f4c9546b5e87a9a174838137da7a468812b7c502dfb85e112d91aad0cfa
+	sha256sums = d48a1d0c321f0d1e447187040d029bc3dcbc8f4791398c6c7ed9729e3ea10aa5
+	sha256sums = b9a79d6f1d0f1f625a257fb78e305dd9ee19ea9a6315ba06489204e004e0b4c3
+	sha256sums = 6bcbb70f85930bddbfd7f0af72c46471243a3267331ce532d4b1232be227231d
+	sha256sums = 5c3d60ef76ccc3604743dd9f4f9ddb859873b869efcedc77d2ed4c3e37e81803
+
+pkgname = cachyos-recovery
+	pkgdesc = CachyOS recovery image (UEFI)
+	depends = systemd-ukify
+	provides = cachyos-recovery
+	conflicts = cachyos-recovery-legacy
+
+pkgname = cachyos-recovery-legacy
+	pkgdesc = CachyOS recovery image (BIOS)
+	provides = cachyos-recovery
+	conflicts = cachyos-recovery
