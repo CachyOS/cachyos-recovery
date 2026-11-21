@@ -26,6 +26,8 @@ declare -r BTRFS_ROLLBACK_SNAPSHOT_LABEL=$'Rollback Btrfs snapshot'
 declare -r BTRFS_ROLLBACK_SNAPSHOT_DESC=$'Restore the system from the selected Btrfs snapshot.\nSuitable if you know exactly which snapshot works or if snapshot cannot be loaded due to kexec.'
 declare -r SYSTEM_REBOOT_LABEL=$'Reboot'
 declare -r SYSTEM_REBOOT_DESC=$'Reboot the system'
+declare -r SYSTEM_CHROOT_LABEL=$'Chroot into target system'
+declare -r SYSTEM_CHROOT_DESC=$'This allows you to get into your system to fix things on your own. Only for expert users. To exit from chroot use Ctrl+] for three times.'
 declare -r RECOVERY_HEADER=$'Welcome to the CachyOS recovery menu!\nIf you are here, your system is probably broken, right? :(\nHow I can help you?'
 
 ## Colors
@@ -1093,6 +1095,11 @@ function system_reboot() {
     systemctl reboot
 }
 
+function system_chroot() {
+    info "Rebooting into target system..."
+    systemd-nspawn -b -D /sysroot
+}
+
 function start() {
     local -A actions=()
     local -A descriptions=()
@@ -1122,6 +1129,11 @@ function start() {
         actions["$action"]="rollback_btrfs_snapshot_wrapper"
         descriptions["$action"]="$BTRFS_ROLLBACK_SNAPSHOT_DESC"
     fi
+
+    # Chroot
+    action="$((count++)). $SYSTEM_CHROOT_LABEL"
+    actions["$action"]="system_chroot"
+    descriptions["$action"]="$SYSTEM_CHROOT_DESC"
 
     # System reboot
     action="$((count++)). $SYSTEM_REBOOT_LABEL"
