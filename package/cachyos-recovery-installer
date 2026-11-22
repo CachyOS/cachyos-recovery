@@ -402,8 +402,8 @@ function install_recovery_bios() {
         return 1
     fi
 
-    target_initrd="/boot/${vmlinuz##*/}"
-    target_vmlinuz="/boot/${initrd##*/}"
+    target_initrd="/boot/${initrd##*/}"
+    target_vmlinuz="/boot/${vmlinuz##*/}"
 
     if command -v limine-entry-tool &>/dev/null && [[ -s "/boot/limine-bios.sys" ]]; then
         if ! limine-entry-tool --add-kernel "cachyos-recovery" "${vmlinuz}" "${initrd}" \
