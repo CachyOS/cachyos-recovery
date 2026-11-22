@@ -256,7 +256,7 @@ function copy_image() {
 function install_recovery_efi() {
     local source target esp cmdline tmp
 
-    if ! esp="$(bootctl --print-esp-path 2>/dev/null)"; then
+    if ! esp="$(SYSTEMD_RELAX_ESP_CHECKS=1 bootctl --print-esp-path 2>/dev/null)"; then
         echo "Failed to detect ESP partition, make sure it is mounted"
         return 1
     fi
