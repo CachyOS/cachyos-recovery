@@ -1,6 +1,6 @@
 pkgbase = cachyos-recovery
 	pkgver = 2026.11.22
-	pkgrel = 1
+	pkgrel = 2
 	url = https://github.com/CachyOS/cachyos-recovery
 	arch = any
 	license = GPL-3.0-or-later
@@ -12,7 +12,7 @@ pkgbase = cachyos-recovery
 	sha256sums = e4c824d3ecf1ce1cb85407e4e876d6c9246de4ace990e56be3abbf5b99513a02
 	sha256sums = 01b4894c50b78e05178307743e48b6f085015b23bca3d63996c3b8655acf7087
 	sha256sums = b9a79d6f1d0f1f625a257fb78e305dd9ee19ea9a6315ba06489204e004e0b4c3
-	sha256sums = 6bcbb70f85930bddbfd7f0af72c46471243a3267331ce532d4b1232be227231d
+	sha256sums = aa3412a57b7bab6f7e8550001d4d03a5836288a3ec0485da9eac4cfc2f424be8
 	sha256sums = 5c3d60ef76ccc3604743dd9f4f9ddb859873b869efcedc77d2ed4c3e37e81803
 
 pkgname = cachyos-recovery
