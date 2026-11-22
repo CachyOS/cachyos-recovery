@@ -1,8 +1,8 @@
 # Maintainer: Vasiliy Stelmachenok <ventureo@cachyos.org>
 pkgbase=cachyos-recovery
 pkgname=('cachyos-recovery' 'cachyos-recovery-legacy')
-pkgver=2026.11.22
-pkgrel=3
+pkgver=2026.11.23
+pkgrel=1
 url="https://github.com/CachyOS/cachyos-recovery"
 license=(GPL-3.0-or-later)
 arch=('any')
@@ -14,10 +14,10 @@ source=(
     95-recovery-install.hook
 )
 sha256sums=(
-    'e4c824d3ecf1ce1cb85407e4e876d6c9246de4ace990e56be3abbf5b99513a02'
-    '01b4894c50b78e05178307743e48b6f085015b23bca3d63996c3b8655acf7087'
+    '006fa6151e1fe6a8f62b5a220bc5fad348fc146a5ccd9d14f0f040533e0a1d5a'
+    'f14c0d5d9843a4e69da07af228a5888b483b8945e45a43bb2021a3ee34472817'
     'b9a79d6f1d0f1f625a257fb78e305dd9ee19ea9a6315ba06489204e004e0b4c3'
-    '3a12516454bcda07fbee8bbf0f9bcef18f78988696645f3f6f2829a013c82734'
+    '7aab99deeba37789321c00f9519f671c39022921fcaa9b671da8c6f6c56b5f89'
     '5c3d60ef76ccc3604743dd9f4f9ddb859873b869efcedc77d2ed4c3e37e81803'
 )
 
