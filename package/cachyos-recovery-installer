@@ -72,7 +72,7 @@ function generate_cmdline() {
                     | awk '{print $2}'
                 )"
             )"
-            options+=" cryptdevice=UUID=${cryptdevice_uuid}:${devname}"
+            options+=" cryptdevice=UUID=${cryptdevice_uuid}:${devname} rd.luks.name=${cryptdevice_uuid}=${devname}"
             break
         fi
     done < <(lsblk -nslo NAME,TYPE /dev/disk/by-uuid/"${top_level_uuid}" 2>/dev/null)
