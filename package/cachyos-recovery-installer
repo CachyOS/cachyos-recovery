@@ -15,6 +15,10 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+function is_efi() {
+    [[ -d /sys/firmware/efi/efivars ]]
+}
+
 # From systemd-boot-manager
 function generate_cmdline() {
     local srcdev \
@@ -301,7 +305,7 @@ function install_recovery_efi() {
     esp="$(find_esp_partition)"
 
     if [[ -z "${esp}" ]]; then
-        echo "No ESP partition was found to mount"
+        echo "No ESP partition was found"
         return 1
     fi
 
@@ -472,9 +476,74 @@ function install_recovery_bios() {
     return 0
 }
 
+function remove_recovery_efi() {
+    local esp entry uuid path
 
-if [[ -d /sys/firmware/efi/efivars ]]; then
-    install_recovery_efi
-else
-    install_recovery_bios
+    esp="$(find_esp_partition)"
+
+    if [[ -z "${esp}" ]]; then
+        echo "No ESP partition was found, is not possible to remove recovery" >&2
+        return 1
+    fi
+
+    path="${esp}/EFI/Linux/cachyos-recovery.efi"
+
+    if [[ -e "${path}" ]]; then
+        rm "${path}" || echo "Failed to remove recovery image"
+    fi
+
+    if [[ -d "${path}.extra.d" ]]; then
+        rm -r "${path}.extra.d" || echo "Failed to remove addon directory"
+    fi
+
+    if command -v limine-entry-tool &>/dev/null && [[ -e "${esp}/EFI/limine/limine_x64.efi" ]]; then
+        limine-entry-tool --remove-efi-path "${path}" --quiet
+    fi
+
+    if ! uuid="$(findmnt -vno PARTUUID "${esp}")"; then
+        echo "Failed to detect partition UUID to remove boot entry" >&2
+        return 0
+    fi
+
+    path="${path#"${esp}"}"
+    path="${path//\//\\}"
+
+    if ! entry="$(find_recovery_entry "${uuid}" "${path}")"; then
+        return 0
+    fi
+
+    if ! efibootmgr -b "${entry}" -B 1>/dev/null; then
+        echo "Failed to remove recovery '${entry}' entry from UEFI" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+function remove_recovery_bios() {
+    rm /boot/cachyos-recovery.initrd || echo "Failed to remove recovery initrd" >&2
+    rm /boot/cachyos-recovery.vmlinuz || echo "Failed to remove recovery vmlinuz" >&2
+
+    if [[ -e /etc/grub.d/50-cachyos-recovery ]]; then
+        rm /etc/grub.d/50-cachyos-recovery || echo "Failed to remove recovery GRUB entry" >&2
+        grub-mkconfig -o /boot/grub/grub.cfg || echo "Failed to regenerate GRUB config" >&2
+    fi
+
+    if command -v limine-entry-tool &>/dev/null && [[ -s "/boot/limine-bios.sys" ]]; then
+        limine-entry-tool --remove-all "cachyos-recovery" --quiet
+    fi
+}
+
+if [[ "${1:-}" == "install" ]]; then
+    if is_efi; then
+        install_recovery_efi
+    else
+        install_recovery_bios
+    fi
+elif [[ "${1:-}" == "remove" ]]; then
+    if [[ -e "/usr/lib/cachyos-recovery/cachyos-recovery.efi" ]]; then
+        remove_recovery_efi
+    else
+        remove_recovery_bios
+    fi
 fi
