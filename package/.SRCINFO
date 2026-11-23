@@ -1,18 +1,18 @@
 pkgbase = cachyos-recovery
 	pkgver = 2026.11.23
-	pkgrel = 1
+	pkgrel = 2
 	url = https://github.com/CachyOS/cachyos-recovery
 	arch = any
 	license = GPL-3.0-or-later
-	source = cachyos-recovery.efi::https://github.com/CachyOS/cachyos-recovery/releases/download/2026.11.23/cachyos-recovery_2026.11.23.efi
-	source = cachyos-recovery.initrd::https://github.com/CachyOS/cachyos-recovery/releases/download/2026.11.23/cachyos-recovery_2026.11.23.initrd
-	source = cachyos-recovery.vmlinuz::https://github.com/CachyOS/cachyos-recovery/releases/download/2026.11.23/cachyos-recovery_2026.11.23.vmlinuz
+	source = cachyos-recovery.efi::https://github.com/CachyOS/cachyos-recovery/releases/download/2026.11.23-2/cachyos-recovery_2026.11.23-2.efi
+	source = cachyos-recovery.initrd::https://github.com/CachyOS/cachyos-recovery/releases/download/2026.11.23-2/cachyos-recovery_2026.11.23-2.initrd
+	source = cachyos-recovery.vmlinuz::https://github.com/CachyOS/cachyos-recovery/releases/download/2026.11.23-2/cachyos-recovery_2026.11.23-2.vmlinuz
 	source = cachyos-recovery-installer
 	source = 95-recovery-install.hook
-	sha256sums = 006fa6151e1fe6a8f62b5a220bc5fad348fc146a5ccd9d14f0f040533e0a1d5a
-	sha256sums = f14c0d5d9843a4e69da07af228a5888b483b8945e45a43bb2021a3ee34472817
+	sha256sums = 2c70bff38a516f2d7419d9931f52bddb1d85713db7a96d2e16c3c95a3bd0f052
+	sha256sums = 16047c2332f6daadb7c7811edc326de703186f1b0dfad0f22a370e3e07e4ae7f
 	sha256sums = b9a79d6f1d0f1f625a257fb78e305dd9ee19ea9a6315ba06489204e004e0b4c3
-	sha256sums = 7aab99deeba37789321c00f9519f671c39022921fcaa9b671da8c6f6c56b5f89
+	sha256sums = 4f8fc33b790b59df6262f6c40caf7b74f960ad13481240d231d9c98b19ad27cd
 	sha256sums = 5c3d60ef76ccc3604743dd9f4f9ddb859873b869efcedc77d2ed4c3e37e81803
 
 pkgname = cachyos-recovery
