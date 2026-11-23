@@ -324,9 +324,6 @@ function boot_btrfs_snapshot() {
         | tr ' ' '\n' \
         | sed -e 's|^rw$|ro|g' \
         -e "s|^rootflags=.*$|rootflags=subvolid=${snapshot}|g" \
-        -e '/^crashkernel=256M$/d' \
-        -e '/^rd.systemd.unit=cachyos-recovery.target$/d' \
-        -e '/^break=postmount$/d' \
         | tr '\n' ' '
     )"
 
