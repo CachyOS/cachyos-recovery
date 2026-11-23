@@ -9,11 +9,13 @@ pkgbase = cachyos-recovery
 	source = cachyos-recovery.vmlinuz::https://github.com/CachyOS/cachyos-recovery/releases/download/2026.11.23-2/cachyos-recovery_2026.11.23-2.vmlinuz
 	source = cachyos-recovery-installer
 	source = 95-recovery-install.hook
+	source = 95-recovery-remove.hook
 	sha256sums = 2c70bff38a516f2d7419d9931f52bddb1d85713db7a96d2e16c3c95a3bd0f052
 	sha256sums = 16047c2332f6daadb7c7811edc326de703186f1b0dfad0f22a370e3e07e4ae7f
 	sha256sums = b9a79d6f1d0f1f625a257fb78e305dd9ee19ea9a6315ba06489204e004e0b4c3
-	sha256sums = 4f8fc33b790b59df6262f6c40caf7b74f960ad13481240d231d9c98b19ad27cd
-	sha256sums = 5c3d60ef76ccc3604743dd9f4f9ddb859873b869efcedc77d2ed4c3e37e81803
+	sha256sums = 4f47fb3dae411a4a52976147f24a617a8c0b55d6e85f8abea9143095aa1cbee7
+	sha256sums = 6b4d97ab00b0dc9ea941f1182e4e85b7e9dd30d7f162a2d18da86924916c1236
+	sha256sums = a08cda4e0789e14ed3d498ff48fb41c0f04167b05e4f3ad3d237af4fa396e492
 
 pkgname = cachyos-recovery
 	pkgdesc = CachyOS recovery image (UEFI)

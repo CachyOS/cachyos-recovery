@@ -8,4 +8,4 @@ Target = cachyos-recovery-legacy
 [Action]
 Description = Installing system recovery image...
 When = PostTransaction
-Exec = /usr/share/libalpm/scripts/cachyos-recovery-installer
+Exec = /usr/share/libalpm/scripts/cachyos-recovery-installer install

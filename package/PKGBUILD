@@ -13,13 +13,15 @@ source=(
     "cachyos-recovery.vmlinuz::https://github.com/CachyOS/cachyos-recovery/releases/download/${_tag}/cachyos-recovery_${_tag}.vmlinuz"
     cachyos-recovery-installer
     95-recovery-install.hook
+    95-recovery-remove.hook
 )
 sha256sums=(
     '2c70bff38a516f2d7419d9931f52bddb1d85713db7a96d2e16c3c95a3bd0f052'
     '16047c2332f6daadb7c7811edc326de703186f1b0dfad0f22a370e3e07e4ae7f'
     'b9a79d6f1d0f1f625a257fb78e305dd9ee19ea9a6315ba06489204e004e0b4c3'
-    '4f8fc33b790b59df6262f6c40caf7b74f960ad13481240d231d9c98b19ad27cd'
-    '5c3d60ef76ccc3604743dd9f4f9ddb859873b869efcedc77d2ed4c3e37e81803'
+    '4f47fb3dae411a4a52976147f24a617a8c0b55d6e85f8abea9143095aa1cbee7'
+    '6b4d97ab00b0dc9ea941f1182e4e85b7e9dd30d7f162a2d18da86924916c1236'
+    'a08cda4e0789e14ed3d498ff48fb41c0f04167b05e4f3ad3d237af4fa396e492'
 )
 
 package_cachyos-recovery() {
@@ -31,6 +33,7 @@ package_cachyos-recovery() {
     install -Dm644 cachyos-recovery.efi "$pkgdir/usr/lib/cachyos-recovery/cachyos-recovery.efi"
     install -Dm755 cachyos-recovery-installer "$pkgdir/usr/share/libalpm/scripts/cachyos-recovery-installer"
     install -Dm644 95-recovery-install.hook "$pkgdir/usr/share/libalpm/hooks/95-recovery-install.hook"
+    install -Dm644 95-recovery-remove.hook "$pkgdir/usr/share/libalpm/hooks/95-recovery-remove.hook"
 }
 
 package_cachyos-recovery-legacy() {
@@ -42,4 +45,5 @@ package_cachyos-recovery-legacy() {
     install -Dm644 cachyos-recovery.vmlinuz "$pkgdir/usr/lib/cachyos-recovery/cachyos-recovery.vmlinuz"
     install -Dm755 cachyos-recovery-installer "$pkgdir/usr/share/libalpm/scripts/cachyos-recovery-installer"
     install -Dm644 95-recovery-install.hook "$pkgdir/usr/share/libalpm/hooks/95-recovery-install.hook"
+    install -Dm644 95-recovery-remove.hook "$pkgdir/usr/share/libalpm/hooks/95-recovery-remove.hook"
 }

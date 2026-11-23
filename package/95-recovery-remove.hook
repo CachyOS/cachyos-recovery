@@ -1,0 +1,10 @@
+[Trigger]
+Type = Package
+Operation = Remove
+Target = cachyos-recovery
+Target = cachyos-recovery-legacy
+
+[Action]
+Description = Removing system recovery image...
+When = PreTransaction
+Exec = /usr/share/libalpm/scripts/cachyos-recovery-installer remove
