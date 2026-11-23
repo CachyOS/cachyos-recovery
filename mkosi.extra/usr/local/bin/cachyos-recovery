@@ -1123,7 +1123,7 @@ function system_chroot() {
         return 1
     fi
 
-    systemd-nspawn -b -D /sysroot || true
+    systemd-nspawn --timezone=off -b -D /sysroot || true
 
     if ! error="$(mount -o remount,ro /sysroot 2>&1)"; then
         show_error "Failed to remount /sysroot as read-only" "${error}"
