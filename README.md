@@ -1,5 +1,8 @@
 # cachyos-recovery
 
+<img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/9d837def-07c5-4ae8-bd78-de9c68c1bf1f" />
+
+
 ## Description
 
 This is the CachyOS recovery environment. It comes as a self-contained UKI
