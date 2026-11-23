@@ -480,7 +480,7 @@ function regenerate_bootloader_config() {
                 error "Failed to generate Limine config"
                 return 1
             }
-        elif [[ -e /boot/grub/grub.cfg && -x "${chroot}/usr/bin/grub-mkconfig" ]]; then
+        elif [[ -e "${chroot}/boot/grub/grub.cfg" && -x "${chroot}/usr/bin/grub-mkconfig" ]]; then
             chroot "${chroot}" grub-mkconfig -o /boot/grub/grub.cfg || {
                 error "Failed to regenerate GRUB config"
                 return 1
