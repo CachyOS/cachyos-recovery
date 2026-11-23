@@ -594,7 +594,7 @@ function cleanup_boot() {
                     step "${filename} is no longer associated with package, so it will be removed"
                     rm -f "${file}"
                 else
-                    if ((signing_needed)); then
+                    if ((signing_needed)) && [[ "$kernel" != "linux-cachyos-eac" ]]; then
                         if ! chroot "${root}" sbctl sign "${file#"${root}"}"; then
                             error "Failed to sign file ${file}"
                         fi
@@ -617,7 +617,7 @@ function cleanup_boot() {
                 [[ -n "${kver}" ]] || continue
 
                 if [[ -n "${versions[$kver]:-}" ]]; then
-                    if ((signing_needed)); then
+                    if ((signing_needed)) && [[ "$filename" != "initramfs-linux-cachyos-eac.img" ]]; then
                         if ! chroot "${root}" sbctl sign "${file#"${root}"}"; then
                             error "Failed to sign file ${file}"
                         fi
