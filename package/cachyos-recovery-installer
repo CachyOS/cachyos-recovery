@@ -110,6 +110,26 @@ function find_recovery_entry() {
     return 1
 }
 
+function find_esp_partition() {
+    local esp
+
+    while IFS= read -r target; do
+        case "$target" in
+            /boot|/boot/efi|/efi)
+                esp="$target"
+                break
+                ;;
+        esac
+    done < <(findmnt --fstab \
+        --types vfat \
+        --tab-file /etc/fstab \
+        --noheadings \
+        --output TARGET || true
+    )
+
+    echo "${esp:-}"
+}
+
 function create_boot_entry() {
     local path="${1}"
     local esp="${2}"
@@ -256,8 +276,10 @@ function copy_image() {
 function install_recovery_efi() {
     local source target esp cmdline tmp
 
-    if ! esp="$(SYSTEMD_RELAX_ESP_CHECKS=1 bootctl --print-esp-path 2>/dev/null)"; then
-        echo "Failed to detect ESP partition, make sure it is mounted"
+    esp="$(find_esp_partition)"
+
+    if [[ -z "${esp}" ]]; then
+        echo "No ESP partition was found to mount"
         return 1
     fi
 
