@@ -147,7 +147,13 @@ function create_boot_entry() {
     while read -r source partuuid; do
         if [[ "$source" == /dev/* && -n "$partuuid" ]]; then
             device="${source}"
-            uuid="${partuuid}"
+
+            # Truncate partition number for MBR
+            if [[ $partuuid =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{2}$ ]]; then
+                uuid="${partuuid%-*}"
+            else
+                uuid="${partuuid}"
+            fi
             break
         fi
     done < <(findmnt -vno SOURCE,PARTUUID "${esp}" || true)
