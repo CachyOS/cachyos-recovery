@@ -87,7 +87,8 @@ function generate_cmdline() {
 function find_recovery_entry() {
     local target_uuid="${1}"
     local target_path="${2}"
-    local uuid boot path
+    local target_num="${3:-}"
+    local uuid boot path num
 
     if ! output="$(efibootmgr 2>/dev/null)"; then
         echo "Failed to get efibootmgr output" >&2
@@ -98,6 +99,13 @@ function find_recovery_entry() {
         uuid="${line%%/*}"
         uuid="${uuid%,*}"
         uuid="${uuid%,*}"
+
+        if [[ -n "$target_num" ]]; then
+            num="${uuid##*\(}"
+            num="${num%%,*}"
+            [[ "${num}" == "${target_num}" ]] || continue
+        fi
+
         uuid="${uuid##*,}"
         [[ "${uuid}" == "${target_uuid}" ]] || continue
 
@@ -137,7 +145,7 @@ function find_esp_partition() {
 function create_boot_entry() {
     local path="${1}"
     local esp="${2}"
-    local device disk partition order uuid entry
+    local device disk partition order uuid entry num=""
 
     if ! command -v efibootmgr &>/dev/null; then
         echo "efibootmgr not found, skipping creating EFI entry..."
@@ -149,8 +157,9 @@ function create_boot_entry() {
             device="${source}"
 
             # Truncate partition number for MBR
-            if [[ $partuuid =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{2}$ ]]; then
-                uuid="${partuuid%-*}"
+            if [[ $partuuid =~ ^[[:xdigit:]]{8}-([[:xdigit:]]{2})$ ]]; then
+                uuid="$(printf '0x%x' "0x${partuuid%-*}")"
+                num="$(printf '%d' "0x${BASH_REMATCH[1]}")"
             else
                 uuid="${partuuid}"
             fi
@@ -164,7 +173,7 @@ function create_boot_entry() {
     fi
 
     # Entry already exists for current installation, nothing to do
-    if [[ -n "$(find_recovery_entry "$uuid" "$path")" ]]; then
+    if [[ -n "$(find_recovery_entry "$uuid" "$path" "$num")" ]]; then
         return 0
     fi
 
@@ -203,7 +212,7 @@ function create_boot_entry() {
         return 1
     fi
 
-    if ! entry="$(find_recovery_entry "${uuid}" "${path}")"; then
+    if ! entry="$(find_recovery_entry "${uuid}" "${path}" "${num}")"; then
         echo "Failed to detect boot EFI entry" >&2
         return 1
     fi
@@ -483,7 +492,7 @@ function install_recovery_bios() {
 }
 
 function remove_recovery_efi() {
-    local esp entry uuid path
+    local esp entry uuid path num=""
 
     esp="$(find_esp_partition)"
 
@@ -511,10 +520,16 @@ function remove_recovery_efi() {
         return 0
     fi
 
+    # Truncate partition number for MBR
+    if [[ $uuid =~ ^[[:xdigit:]]{8}-([[:xdigit:]]{2})$ ]]; then
+        uuid="$(printf '0x%x' "0x${uuid%-*}")"
+        num="$(printf '%d' "0x${BASH_REMATCH[1]}")"
+    fi
+
     path="${path#"${esp}"}"
     path="${path//\//\\}"
 
-    if ! entry="$(find_recovery_entry "${uuid}" "${path}")"; then
+    if ! entry="$(find_recovery_entry "${uuid}" "${path}" "${num}")"; then
         return 0
     fi
 
