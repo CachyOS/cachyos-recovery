@@ -48,6 +48,10 @@ function unlock_luks() {
         return 1
     fi
 
+    # Don't try to unlock if it's already unlocked (e. g. using TPM)
+    if [[ -b "/dev/mapper/${name}" ]]; then
+        return 0
+    fi
 
     for ((i=0; i < 5; i++)); do
         if ! cryptsetup open "$device" "$name" < /dev/tty1; then
