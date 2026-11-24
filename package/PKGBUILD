@@ -1,9 +1,9 @@
 # Maintainer: Vasiliy Stelmachenok <ventureo@cachyos.org>
 pkgbase=cachyos-recovery
 pkgname=('cachyos-recovery' 'cachyos-recovery-legacy')
-_tag="2026.11.23-2"
-pkgver=2026.11.23
-pkgrel=2
+_tag="2026.11.24"
+pkgver=2026.11.24
+pkgrel=1
 url="https://github.com/CachyOS/cachyos-recovery"
 license=(GPL-3.0-or-later)
 arch=('any')
@@ -16,9 +16,9 @@ source=(
     95-recovery-remove.hook
 )
 sha256sums=(
-    '2c70bff38a516f2d7419d9931f52bddb1d85713db7a96d2e16c3c95a3bd0f052'
-    '16047c2332f6daadb7c7811edc326de703186f1b0dfad0f22a370e3e07e4ae7f'
-    'b9a79d6f1d0f1f625a257fb78e305dd9ee19ea9a6315ba06489204e004e0b4c3'
+    '016d52783d2d84692d5d1d232dc4f02129960620bfcfac25cb2fce0bc8750788'
+    '4bbebdb92172cbe20036d896d5734bbfbee921671151e0713e47405a46aff269'
+    'c634f15f09559af0848fe3a22fe58e80cceee7eeaeea327e22e6a899a89eccb8'
     '4f47fb3dae411a4a52976147f24a617a8c0b55d6e85f8abea9143095aa1cbee7'
     '6b4d97ab00b0dc9ea941f1182e4e85b7e9dd30d7f162a2d18da86924916c1236'
     'a08cda4e0789e14ed3d498ff48fb41c0f04167b05e4f3ad3d237af4fa396e492'
