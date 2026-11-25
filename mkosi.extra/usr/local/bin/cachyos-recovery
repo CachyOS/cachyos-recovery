@@ -987,13 +987,19 @@ function rollback_btrfs_snapshot() {
             umount "${tmp}/root" && rmdir "${tmp}/root"
         fi
 
-        mountpoint -q "${tmp}/snapshot" 2>/dev/null && umount -R "${tmp}/snapshot" 2>/dev/null
-        mountpoint -q "${tmp}/snapshot" 2>/dev/null || rmdir "${tmp}/snapshot" 2>/dev/null
+        if mountpoint -q "${tmp}/snapshot" 2>/dev/null; then
+            umount -R "${tmp}/snapshot" 2>/dev/null && rmdir "${tmp}/snapshot" 2>/dev/null || true
+        else
+            rmdir "${tmp}/snapshot" 2>/dev/null || true
+        fi
         rmdir "${tmp}" 2>/dev/null || true
 
         if [[ -d "${boot}/overlay" ]]; then
-            mountpoint -q "${boot}/overlay" 2>/dev/null && umount "${boot}/overlay" 2>/dev/null
-            mountpoint -q "${boot}/overlay" 2>/dev/null || rmdir "${boot}/overlay" 2>/dev/null
+            if mountpoint -q "${boot}/overlay" 2>/dev/null; then
+                umount "${boot}/overlay" 2>/dev/null && rmdir "${boot}/overlay" 2>/dev/null || true
+            else
+                rmdir "${boot}/overlay" 2>/dev/null || true
+            fi
         fi
 
         if [[ -d "${boot}/content" ]]; then
