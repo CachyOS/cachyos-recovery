@@ -990,10 +990,16 @@ function rollback_btrfs_snapshot() {
         mountpoint -q "${tmp}/snapshot" 2>/dev/null && umount -R "${tmp}/snapshot" 2>/dev/null
         mountpoint -q "${tmp}/snapshot" 2>/dev/null || rmdir "${tmp}/snapshot" 2>/dev/null
         rmdir "${tmp}" 2>/dev/null || true
-        [[ ! -d "${boot}" ]] && return 0
-        mountpoint -q "${boot}/overlay" 2>/dev/null && umount "${boot}/overlay" 2>/dev/null
-        mountpoint -q "${boot}/overlay" 2>/dev/null || rmdir "${boot}/overlay" 2>/dev/null
-        rm -rf "${boot}/content" && rmdir "${boot}"
+
+        if [[ -d "${boot}/overlay" ]]; then
+            mountpoint -q "${boot}/overlay" 2>/dev/null && umount "${boot}/overlay" 2>/dev/null
+            mountpoint -q "${boot}/overlay" 2>/dev/null || rmdir "${boot}/overlay" 2>/dev/null
+        fi
+
+        if [[ -d "${boot}/content" ]]; then
+            rm -rf "${boot}/content"
+            rmdir "${boot}" || true
+        fi
     }
 
     trap '_cleanup_rollback' EXIT RETURN
